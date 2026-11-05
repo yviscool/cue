@@ -1,0 +1,1881 @@
+package hud
+
+import (
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/ui"
+	"github.com/yviscool/cue/internal/assets"
+	"github.com/yviscool/cue/internal/config"
+	"github.com/yviscool/cue/internal/engine"
+	"github.com/yviscool/cue/internal/i18n"
+	"github.com/yviscool/cue/internal/semantic"
+	"github.com/yviscool/cue/internal/theme"
+)
+
+// strokeIcon parses an inline SVG path with standard 1.75 stroke.
+func strokeIcon(paths string) *ui.SVG {
+	return ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">` + paths + `</svg>`))
+}
+
+var (
+	iconSettings = strokeIcon(`<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>`)
+	iconMonitor  = strokeIcon(`<rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/>`)
+	iconKeyboard = strokeIcon(`<rect width="20" height="16" x="2" y="4" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M7 16h10"/>`)
+	iconMouse    = strokeIcon(`<rect x="5" y="2" width="14" height="20" rx="7"/><path d="M12 6v4"/>`)
+	iconInfo        = strokeIcon(`<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>`)
+	iconReset       = strokeIcon(`<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>`)
+	iconSearch      = strokeIcon(`<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>`)
+	iconChevronDown = strokeIcon(`<path d="m6 9 6 6 6-6"/>`)
+)
+
+// themeDisplayName returns an intuitive bilingual Chinese-first display name for preset themes.
+func themeDisplayName(name string) string {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "liquid glass":
+		return "液态冰晶 (Liquid Glass)"
+	case "macbook scissor":
+		return "深空剪刀脚 (MacBook Scissor)"
+	case "dieter rams 1960":
+		return "博朗经典 (Dieter Rams)"
+	case "cyberpunk neon":
+		return "赛博霓虹 (Cyberpunk Neon)"
+	case "classic mechanical":
+		return "复古机械 (Classic Mechanical)"
+	case "ibm model m 1984":
+		return "传奇屈曲轴 (IBM Model M)"
+	case "minimal chalk":
+		return "极简粉笔白 (Minimal Chalk)"
+	case "obsidian oled":
+		return "黑曜极光 (Obsidian OLED)"
+	case "tokyo blossom":
+		return "东京落樱 (Tokyo Blossom)"
+	case "emerald matrix":
+		return "代码矩阵 (Emerald Matrix)"
+	case "sunset horizon":
+		return "暮光地平线 (Sunset Horizon)"
+	case "royal velvet":
+		return "皇家丝绒 (Royal Velvet)"
+	default:
+		th := theme.ThemeByName(name)
+		if th.DisplayName != "" {
+			return th.DisplayName
+		}
+		return name
+	}
+}
+
+// Palette holds Cupertino / Apple Human Interface theme colors.
+type palette struct {
+	dark      bool
+	bg        ui.Color // card background
+	card      ui.Color
+	sidebar   ui.Color
+	canvas    ui.Color
+	text      ui.Color
+	muted     ui.Color
+	faint     ui.Color
+	hairline  ui.Color
+	hover     ui.Color
+	press     ui.Color
+	accent    ui.Color
+	onAccent  ui.Color
+	cardShade ui.Color
+}
+
+func paletteFor(t *ui.Theme) palette {
+	if t.Dark {
+		cardColor := ui.Hex("#242428")
+		return palette{
+			dark:      true,
+			bg:        cardColor,
+			card:      cardColor,
+			sidebar:   ui.Hex("#131316"),
+			canvas:    ui.Hex("#1c1c1f"),
+			text:      ui.Hex("#f5f5f7"),
+			muted:     ui.RGBA(235, 235, 245, 0.60),
+			faint:     ui.RGBA(235, 235, 245, 0.28),
+			hairline:  ui.RGBA(255, 255, 255, 0.08),
+			hover:     ui.RGBA(255, 255, 255, 0.06),
+			press:     ui.RGBA(255, 255, 255, 0.12),
+			accent:    ui.Hex("#0a84ff"),
+			onAccent:  ui.Hex("#ffffff"),
+			cardShade: ui.RGBA(0, 0, 0, 0.45),
+		}
+	}
+	cardColor := ui.Hex("#ffffff")
+	return palette{
+		bg:        cardColor,
+		card:      cardColor,
+		sidebar:   ui.Hex("#ebecef"),
+		canvas:    ui.Hex("#f6f7f9"),
+		text:      ui.Hex("#1d1d1f"),
+		muted:     ui.RGBA(60, 60, 67, 0.65),
+		faint:     ui.RGBA(60, 60, 67, 0.28),
+		hairline:  ui.RGBA(0, 0, 0, 0.08),
+		hover:     ui.RGBA(0, 0, 0, 0.04),
+		press:     ui.RGBA(0, 0, 0, 0.08),
+		accent:    ui.Hex("#007aff"),
+		onAccent:  ui.Hex("#ffffff"),
+		cardShade: ui.RGBA(0, 0, 0, 0.06),
+	}
+}
+
+// MasterColorSchemes holds original 14 master color schemes from cue.
+type ColorSchemePreset struct {
+	Name      string
+	Primary   string
+	Secondary string
+	Text      string
+}
+
+var MasterColorSchemes = []ColorSchemePreset{
+	{"Silver", "#f8f8f8", "#dcdcdc", "#000000"},
+	{"Stone", "#606060", "#4b4b4b", "#f8f8f8"},
+	{"Lime", "#606060", "#4b4b4b", "#D6ED17"},
+	{"Cyber", "#00B1D2", "#008ea8", "#FDDB27"},
+	{"Turquoise", "#42EADD", "#2ec4b8", "#ffffff"},
+	{"Blue", "#2196f3", "#1976d2", "#ffffff"},
+	{"Yellow", "#FDDB27", "#dfc019", "#000000"},
+	{"Green", "#66bb6a", "#43a047", "#ffffff"},
+	{"Pink", "#f06292", "#d81b60", "#ffffff"},
+	{"Red", "#ef5350", "#c62828", "#ffffff"},
+	{"Pansy", "#673ab7", "#4527a0", "#ffc107"},
+	{"Eclipse", "#343148", "#252333", "#D7C49E"},
+	{"Bumblebee", "#404040", "#2e2e2e", "#FDDB27"},
+	{"Charcoal", "#404040", "#2e2e2e", "#FFFFFF"},
+}
+
+// SettingsController drives the full-fledged Cue Settings Client studio window.
+type SettingsController struct {
+	store                 *config.Store
+	engine                *engine.Engine
+	vState                *ViewState
+	activeTab             string
+	window                *mygo.Window
+	logoSrc               ui.ImageSource
+	marginLinked          bool
+	scrollState           ui.ScrollState
+	showResetConfirm      bool
+	showCustomFilterModal bool
+	themeDropdownOpen     bool
+	styleDropdownOpen     bool
+	colorDropdownOpen     bool
+	filterTab             string
+}
+
+// NewSettingsController creates a controller for the settings client window.
+func NewSettingsController(store *config.Store, eng *engine.Engine, vState *ViewState) *SettingsController {
+	logo, _ := assets.GetAppLogoSource()
+	if logo == nil {
+		logo, _ = assets.GetAppIconSource()
+	}
+	return &SettingsController{
+		store:        store,
+		engine:       eng,
+		vState:       vState,
+		activeTab:    "General",
+		logoSrc:      logo,
+		marginLinked: true,
+		filterTab:    "Keyboard",
+	}
+}
+
+// updateConfig updates configuration in store and automatically invalidates window.
+func (sc *SettingsController) updateConfig(fn func(*config.AppConfig)) {
+	err := sc.store.Update(fn)
+	_ = err
+	if sc.window != nil {
+		sc.window.Invalidate()
+	}
+}
+
+// Open shows or focuses the settings window (100% thread-safe & deadlock-free).
+func (sc *SettingsController) Open() {
+	if sc.window != nil {
+		if sc.window.IsMinimized() {
+			sc.window.Restore()
+		}
+		sc.window.Show()
+		sc.window.Focus()
+		mygo.App.Focus()
+		return
+	}
+
+	sc.window = mygo.NewWindow(mygo.WindowOptions{
+		Title:           "Cue — Settings",
+		Width:           960,
+		Height:          720,
+		MinWidth:        800,
+		MinHeight:       560,
+		StateKey:        "settings",
+		DisableMaximize: true,
+		AutoHideMenuBar: true,
+		BackgroundColor: "light-dark(#f6f7f9, #1c1c1f)",
+		Content:         ui.View(sc.render),
+	})
+	_ = sc.window.SetIcon(assets.AppIconPNG)
+
+	sc.window.OnClosed(func() {
+		sc.window = nil
+	})
+}
+
+// render renders the entire settings studio client matching mygo-cloudmusic design language.
+func (sc *SettingsController) render(c *ui.Context) {
+	t := c.Theme()
+	p := paletteFor(t)
+	c.Root().Background(p.canvas)
+
+	activeTab := sc.activeTab
+	cfg := sc.store.Get()
+	logo := sc.logoSrc
+
+	ui.Row(c).Fill().AlignItems(ui.Stretch).Children(func() {
+		// ───────────── LEFT SIDEBAR (Apple Ventura/Jobsian Aesthetic, 1/5 narrower) ─────────────
+		ui.Column(c).Width(208).Background(p.sidebar).Padding(16, 10, 14, 10).Gap(3).BorderWidth(0, 1, 0, 0).BorderColor(p.hairline).Children(func() {
+			// 1. Brand Header with App Icon & Version
+			ui.Row(c).AlignItems(ui.Center).Gap(10).Padding(4, 6, 10, 6).Children(func() {
+				if logo != nil {
+					ui.Image(c, logo).Size(36, 36).Radius(8)
+				} else {
+					ui.Box(c).Size(36, 36).Radius(8).Background(p.accent).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
+						ui.Icon(c, iconKeyboard).Size(20, 20).TextColor(p.onAccent)
+					})
+				}
+				ui.Column(c).Gap(2).Children(func() {
+					ui.Text(c, i18n.T("app_name")).Bold().FontSize(14.5).TextColor(p.text)
+					ui.Text(c, "v1.0 · Direct3D 11").FontSize(11).TextColor(p.muted)
+				})
+			})
+
+			ui.Box(c).Height(1).Background(p.hairline).Margin(2, 4, 8, 4)
+
+			// Navigation Tabs
+			navTab := func(tabID, labelKey string, icon *ui.SVG) {
+				isSelected := activeTab == tabID
+				b := ui.ButtonBase(c.Key("nav-" + tabID)).
+					Height(36).
+					PaddingX(10).
+					Gap(8).
+					Radius(7).
+					AlignItems(ui.Center).
+					Justify(ui.Start).
+					FocusRing(false)
+
+				bg := ui.Transparent
+				switch {
+				case isSelected:
+					bg = p.press
+				case b.Hovered():
+					bg = p.hover
+				}
+				b.Background(b.AnimateColor("bg", bg, ui.Animation{Duration: 100 * time.Millisecond}))
+
+				iconColor := p.muted
+				textColor := p.text
+				if isSelected {
+					iconColor = p.accent
+				}
+
+				b.Children(func() {
+					if isSelected {
+						ui.Box(c).Width(3).Height(18).Radius(1.5).Background(p.accent)
+					} else {
+						ui.Box(c).Width(3).Height(18)
+					}
+					ui.Icon(c, icon).Size(16, 16).TextColor(iconColor)
+					ui.Text(c, i18n.T(labelKey)).FontSize(13).FontWeight(func() int {
+						if isSelected {
+							return 600
+						}
+						return 400
+					}()).TextColor(textColor).Grow(1)
+				})
+
+				if b.Clicked() {
+					sc.activeTab = tabID
+					sc.themeDropdownOpen = false
+					sc.styleDropdownOpen = false
+					sc.colorDropdownOpen = false
+					if sc.window != nil {
+						sc.window.Invalidate()
+					}
+				}
+			}
+
+			navTab("General", "tab_general", iconSettings)
+			navTab("Appearance", "tab_appearance", iconMonitor)
+			navTab("Keycap", "tab_keycap", iconKeyboard)
+			navTab("Mouse", "tab_mouse", iconMouse)
+
+			ui.Spacer(c)
+
+			navTab("About", "tab_about", iconInfo)
+
+			ui.Box(c).Height(1).Background(p.hairline).Margin(2, 4, 4, 4)
+
+			// Revert to Default configuration
+			resetBtn := ui.ButtonBase(c.Key("reset-defaults")).
+				Height(30).
+				PaddingX(8).
+				Gap(6).
+				Radius(6).
+				AlignItems(ui.Center).
+				Justify(ui.Start).
+				FocusRing(false)
+
+			bgReset := ui.Transparent
+			if resetBtn.Hovered() {
+				bgReset = p.hover
+			}
+			resetBtn.Background(resetBtn.AnimateColor("bgReset", bgReset, ui.Animation{Duration: 100 * time.Millisecond}))
+
+			resetBtn.Children(func() {
+				ui.Icon(c, iconReset).Size(13, 13).TextColor(p.muted)
+				ui.Text(c, i18n.T("reset_defaults")).FontSize(11.5).TextColor(p.muted)
+			})
+
+			if resetBtn.Clicked() {
+				sc.showResetConfirm = true
+				if sc.window != nil {
+					sc.window.Invalidate()
+				}
+			}
+		})
+
+		ui.Box(c).Width(1).Background(p.hairline)
+
+		// ───────────── RIGHT SCROLLABLE CONTENT (Direct children, proper scroll bounds) ─────────────
+		ui.Box(c.Key("main-content-area")).Grow(1).Background(p.canvas).Children(func() {
+			ui.Scroll(c.Key("settings-scroll-" + activeTab)).
+				Fill().
+				Scrollbars(true).
+				Padding(24, 32, 48, 32).
+				Gap(14).
+				Children(func() {
+					// group renders a cloudmusic-style card group
+					group := func(title string, rows func()) {
+						ui.Text(c, title).FontSize(12).FontWeight(600).TextColor(p.muted).Margin(14, 4, 6, 4)
+						ui.Column(c).Radius(12).Background(p.card).Border(1, p.hairline).Dividers(1, p.hairline).Children(rows)
+					}
+
+					// row renders a standard settings line
+					row := func(label, desc string, control func()) {
+						ui.Row(c).Padding(12, 16).Gap(16).AlignItems(ui.Center).MinHeight(48).Children(func() {
+							ui.Column(c).Grow(1).Shrink(1).MinWidth(0).Gap(3).Children(func() {
+								ui.Text(c, label).FontSize(13.5).FontWeight(500).TextColor(p.text)
+								if desc != "" {
+									ui.Text(c, desc).FontSize(12).TextColor(p.muted).LineHeight(1.4)
+								}
+							})
+							control()
+						})
+					}
+
+					// stacked renders a full-width item (e.g. alignment grid or swatches)
+					stacked := func(label, desc string, control func()) {
+						ui.Column(c).Padding(14, 16).Gap(10).Children(func() {
+							ui.Column(c).Gap(3).Children(func() {
+								ui.Text(c, label).FontSize(13.5).FontWeight(500).TextColor(p.text)
+								if desc != "" {
+									ui.Text(c, desc).FontSize(12).TextColor(p.muted).LineHeight(1.4)
+								}
+							})
+							control()
+						})
+					}
+
+					switch activeTab {
+					case "General":
+						sc.renderGeneralTab(c, cfg, p, group, row)
+					case "Appearance":
+						sc.renderAppearanceTab(c, cfg, p, group, row, stacked)
+					case "Keycap":
+						sc.renderKeycapTab(c, cfg, p, group, row, stacked)
+					case "Mouse":
+						sc.renderMouseTab(c, cfg, p, group, row)
+					case "About":
+						sc.renderAboutTab(c, p, group, row)
+					}
+				})
+		})
+	})
+
+	// Modal Dialog Overlays
+	if sc.showResetConfirm {
+		sc.renderResetConfirmDialog(c, p)
+	}
+	if sc.showCustomFilterModal {
+		sc.renderCustomFilterModal(c, cfg, p)
+	}
+}
+
+// renderShowcaseStage renders an Apple Cupertino style live preview stage,
+// displaying realistic active HUD keycaps ([Ctrl] + [C] "Copy" and [⌘] + [V] "Paste")
+// in the live active theme, physical model, typography, and color palette.
+func (sc *SettingsController) renderShowcaseStage(c *ui.Context, cfg config.AppConfig, p palette) {
+	currentTheme := theme.ThemeByName(cfg.ThemePreset)
+
+	ui.Column(c.Key("live-showcase-stage")).
+		Fill().
+		Radius(12).
+		Background(p.sidebar).
+		Border(1.2, p.hairline).
+		Padding(14).
+		Gap(10).
+		Shadow(0, 4, 16, 0, ui.RGBA(0, 0, 0, 0.30)).
+		Children(func() {
+			// Stage Header
+			ui.Row(c).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
+				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+					ui.Box(c).Size(7, 7).Radius(3.5).Background(p.accent)
+					ui.Text(c, "按键效果实时展示台 (Live HUD Showcase)").FontSize(12.5).Bold().TextColor(p.text)
+				})
+				ui.Text(c, fmt.Sprintf("%s · %s", themeDisplayName(cfg.ThemePreset), cfg.Appearance.Style)).
+					FontSize(11.5).
+					TextColor(p.muted)
+			})
+
+			// Canvas Area: Simulated Desktop Screen with active keycaps
+			ui.Box(c.Key("showcase-canvas")).
+				Fill().
+				Height(90).
+				Radius(8).
+				Background(ui.Hex("#0b0f19")). // deep navy desktop backdrop
+				Border(1, ui.RGBA(255, 255, 255, 0.08)).
+				Padding(12).
+				AlignItems(ui.Center).
+				Justify(ui.Center).
+				Children(func() {
+					ui.Row(c).Gap(24).AlignItems(ui.Center).Children(func() {
+						// Sample Chord 1: [ Ctrl ] + [ C ] -> [ 复制 Copy ]
+						sampleChord1 := engine.DisplayChord{
+							ID: "preview-1",
+							Keys: []engine.KeyCap{
+								{Label: "Ctrl", IsModifier: true},
+								{Label: "C", IsModifier: false},
+							},
+							Action: semantic.ActionInfo{Title: "Copy"},
+						}
+						renderChord(c, sampleChord1, currentTheme, cfg)
+
+						// Sample Chord 2: [ ⌘ Cmd ] + [ V ] -> [ 粘贴 Paste ]
+						sampleChord2 := engine.DisplayChord{
+							ID: "preview-2",
+							Keys: []engine.KeyCap{
+								{Label: "⌘", IsModifier: true},
+								{Label: "V", IsModifier: false},
+							},
+							Action: semantic.ActionInfo{Title: "Paste"},
+						}
+						renderChord(c, sampleChord2, currentTheme, cfg)
+					})
+				})
+		})
+}
+
+// renderGeneralTab mirrors Cue General settings with clean card groups and 12 preset themes.
+func (sc *SettingsController) renderGeneralTab(
+	c *ui.Context,
+	cfg config.AppConfig,
+	p palette,
+	group func(title string, rows func()),
+	row func(label, desc string, control func()),
+) {
+	ui.Text(c, i18n.T("general_title")).FontSize(20).Bold().TextColor(p.text)
+	sc.renderShowcaseStage(c, cfg, p)
+
+	// Group 1: 预设主题 (Preset Themes Floating Web Dropdown)
+	group("预设主题", func() {
+		currentTheme := theme.ThemeByName(cfg.ThemePreset)
+		currentDisplay := themeDisplayName(currentTheme.Name)
+		themeChoice := cfg.ThemePreset
+
+		row("主题方案", "精选视觉设计风格与配色", func() {
+			sel := ui.SelectBase(c, &themeChoice)
+			sel.Trigger.
+				Height(36).
+				PaddingX(12).
+				Gap(10).
+				Radius(8).
+				Background(p.sidebar).
+				Border(1, p.hairline).
+				AlignItems(ui.Center).
+				Children(func() {
+					ui.Box(c).Size(22, 20).Radius(5).
+						Background(currentTheme.KeyCapBackground).
+						Border(1.2, currentTheme.KeyCapBorder).
+						Shadow(0, 2, 6, 0, ui.RGBA(0, 0, 0, 0.25)).
+						AlignItems(ui.Center).Justify(ui.Center).
+						Children(func() {
+							ui.Text(c, "⌘").FontSize(9.5).Bold().TextColor(currentTheme.KeyCapTextColor)
+						})
+					ui.Text(c, currentDisplay).FontSize(13).Bold().TextColor(p.text)
+					ui.Icon(c, iconChevronDown).Size(12, 12).TextColor(p.muted)
+				})
+
+			sel.Popup(func(panel ui.Element) {
+				panel.
+					Width(260).
+					Background(p.card).
+					Border(1, p.hairline).
+					Radius(10).
+					Padding(4).
+					Shadow(0, 12, 32, 0, ui.RGBA(0, 0, 0, 0.50))
+
+				for _, th := range theme.AllThemes {
+					thConfig := th
+					displayName := themeDisplayName(thConfig.Name)
+					item := sel.Item(thConfig.Name).
+						Height(36).
+						PaddingX(10).
+						Gap(10).
+						Radius(6).
+						AlignItems(ui.Center)
+
+					if item.Highlighted() {
+						item.Background(p.press)
+					} else if thConfig.Name == cfg.ThemePreset {
+						item.Background(p.hover)
+					}
+
+					item.Children(func() {
+						ui.Box(c).Size(22, 20).Radius(5).
+							Background(thConfig.KeyCapBackground).
+							Border(1.2, thConfig.KeyCapBorder).
+							Shadow(0, 2, 6, 0, ui.RGBA(0, 0, 0, 0.25)).
+							AlignItems(ui.Center).Justify(ui.Center).
+							Children(func() {
+								ui.Text(c, "⌘").FontSize(9.5).Bold().TextColor(thConfig.KeyCapTextColor)
+							})
+						ui.Text(c, displayName).FontSize(12.5).TextColor(p.text).Grow(1)
+						if thConfig.Name == cfg.ThemePreset {
+							ui.Text(c, "✓").FontSize(13).Bold().TextColor(p.accent)
+						}
+					})
+				}
+			})
+
+			if sel.Trigger.Changed() {
+				th := theme.ThemeByName(themeChoice)
+				sc.updateConfig(func(ac *config.AppConfig) {
+					ac.ThemePreset = themeChoice
+					ac.Appearance.Style = theme.DefaultStyleForTheme(themeChoice)
+					ac.Color.Color = theme.ColorToHex(th.KeyCapBackground)
+					ac.Color.SecondaryColor = theme.ColorToHex(th.KeyCapBorder)
+					ac.Text.Color = theme.ColorToHex(th.KeyCapTextColor)
+					ac.Border.Color = theme.ColorToHex(th.KeyCapBorder)
+					if th.KeyCapRadius > 0 {
+						ac.Border.Radius = float64(th.KeyCapRadius)
+					}
+				})
+				if sc.vState != nil {
+					sc.vState.SetTheme(th)
+				}
+				if sc.engine != nil {
+					sc.engine.SetThemeName(th.Name)
+				}
+				if sc.window != nil {
+					sc.window.Invalidate()
+				}
+			}
+		})
+	})
+
+	// Group 2: Display Language & System
+	group(i18n.T("lang_section_title"), func() {
+		row(i18n.T("lang_title"), i18n.T("lang_desc"), func() {
+			langCodes := []i18n.Language{i18n.LangZhCN, i18n.LangEnUS, i18n.LangZhTW, i18n.LangJaJP}
+			labels := []string{"简体中文", "English", "繁體中文", "日本語"}
+			curLang := i18n.Instance().GetLanguage()
+			selIdx := 0
+			for i, code := range langCodes {
+				if curLang == code {
+					selIdx = i
+					break
+				}
+			}
+			if ui.Segmented(c.Key("lang-segmented"), &selIdx, labels...).Changed() {
+				target := langCodes[selIdx]
+				i18n.Instance().SetLanguage(target)
+				sc.updateConfig(func(ac *config.AppConfig) {
+					ac.Language = string(target)
+				})
+				if sc.window != nil {
+					sc.window.Invalidate()
+				}
+			}
+		})
+	})
+
+	// Group 3: Filter Policy & Custom Filter Matrix
+	group(i18n.T("filter_title"), func() {
+		row(i18n.T("filter_title"), i18n.T("filter_desc"), func() {
+			modes := []string{"none", "modifiers", "custom"}
+			labels := []string{i18n.T("filter_none"), i18n.T("filter_modifiers"), i18n.T("filter_custom")}
+			selIdx := 1
+			for i, m := range modes {
+				if m == cfg.General.Filter {
+					selIdx = i
+				}
+			}
+			if ui.Segmented(c.Key("filter-mode"), &selIdx, labels...).Changed() {
+				target := modes[selIdx]
+				sc.updateConfig(func(ac *config.AppConfig) { ac.General.Filter = target })
+				if sc.engine != nil {
+					if target == "none" {
+						sc.engine.SetFilterMode(engine.FilterAll)
+					} else {
+						sc.engine.SetFilterMode(engine.FilterSmart)
+					}
+				}
+			}
+		})
+
+		if cfg.General.Filter == "custom" {
+			row("自定义过滤名单", fmt.Sprintf("已启用 %d 个按键，点击打开自定义按键过滤矩阵", len(cfg.General.AllowedKeys)), func() {
+				if ui.Button(c.Key("open-custom-filter-btn"), "配置按键矩阵...").
+					Padding(6, 14).
+					Radius(6).
+					Background(p.accent).
+					TextColor(p.onAccent).
+					Clicked() {
+					sc.showCustomFilterModal = true
+					if sc.window != nil {
+						sc.window.Invalidate()
+					}
+				}
+			})
+		}
+	})
+
+	// Group 4: History Trail, Word Grouping & Flow Direction
+	group(i18n.T("history_title"), func() {
+		row(i18n.T("history_title"), i18n.T("history_desc"), func() {
+			on := cfg.General.ShowEventHistory
+			if ui.Switch(c.Key("toggle-history"), &on).Changed() {
+				sc.updateConfig(func(ac *config.AppConfig) { ac.General.ShowEventHistory = on })
+			}
+		})
+
+		row("单词合并输入", "连续键入的英文字母与数字合并为连续单词", func() {
+			on := cfg.General.WordGrouping
+			if ui.Switch(c.Key("toggle-word-grouping"), &on).Changed() {
+				sc.updateConfig(func(ac *config.AppConfig) { ac.General.WordGrouping = on })
+				if sc.engine != nil {
+					sc.engine.SetWordGrouping(on)
+				}
+			}
+		})
+
+		row(i18n.T("direction_title"), "控制屏幕上历史按键队列的展开方向", func() {
+			dirIdx := 1
+			if cfg.Appearance.FlexDirection == "row" {
+				dirIdx = 0
+			}
+			if ui.Segmented(c.Key("flow-dir"), &dirIdx, i18n.T("direction_row"), i18n.T("direction_column")).Changed() {
+				dirVal := "column"
+				if dirIdx == 0 {
+					dirVal = "row"
+				}
+				sc.updateConfig(func(ac *config.AppConfig) { ac.Appearance.FlexDirection = dirVal })
+			}
+		})
+
+		row("最大留存组数", "保留在屏幕上的最大按键组数 (2 至 12 组)", func() {
+			ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+				if ui.Button(c.Key("hist-dec"), "−").Padding(4, 10).Radius(6).Clicked() && cfg.General.MaxHistory > 2 {
+					sc.updateConfig(func(ac *config.AppConfig) { ac.General.MaxHistory-- })
+				}
+				ui.Textf(c, "%d 组", cfg.General.MaxHistory).FontSize(13).Bold().TextColor(p.text)
+				if ui.Button(c.Key("hist-inc"), "+").Padding(4, 10).Radius(6).Clicked() && cfg.General.MaxHistory < 12 {
+					sc.updateConfig(func(ac *config.AppConfig) { ac.General.MaxHistory++ })
+				}
+			})
+		})
+	})
+
+	// Group 5: Shortcuts & Feedback
+	group("快捷键与音效", func() {
+		row(i18n.T("toggle_shortcut"), i18n.T("toggle_shortcut_desc"), func() {
+			ui.Box(c).Background(p.sidebar).Border(1, p.hairline).Radius(6).Padding(6, 12).Children(func() {
+				ui.Text(c, i18n.T("default_shortcut")).Bold().FontSize(12.5).TextColor(p.text)
+			})
+		})
+
+		row("机械音效反馈", "敲击按键时播放轻微机械轴微动声音", func() {
+			on := cfg.TactileAudio
+			if ui.Switch(c.Key("toggle-tactile-audio"), &on).Changed() {
+				sc.updateConfig(func(ac *config.AppConfig) { ac.TactileAudio = on })
+				if sc.engine != nil {
+					sc.engine.SetSoundActive(on)
+				}
+			}
+		})
+	})
+}
+
+// renderAppearanceTab mirrors Cue Appearance tab with 9-Grid and smooth stepper controls.
+func (sc *SettingsController) renderAppearanceTab(
+	c *ui.Context,
+	cfg config.AppConfig,
+	p palette,
+	group func(title string, rows func()),
+	row func(label, desc string, control func()),
+	stacked func(label, desc string, control func()),
+) {
+	ui.Text(c, i18n.T("appearance_title")).FontSize(20).Bold().TextColor(p.text)
+
+	// Group 1: Alignment & Position
+	group(i18n.T("alignment_title"), func() {
+		row(i18n.T("alignment_title"), i18n.T("alignment_desc"), func() {
+			sc.renderAlignmentSelector(c, cfg, p)
+		})
+	})
+
+	// Group 2: Linger Duration & Margins
+	group(i18n.T("linger_title"), func() {
+		row("停留时长", "按键在屏幕上的显示时长", func() {
+			ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+				if ui.Button(c.Key("dur-dec"), "−0.5s").Padding(4, 8).Radius(6).Clicked() && cfg.General.LingerDurationMs > 1000 {
+					sc.updateConfig(func(ac *config.AppConfig) { ac.General.LingerDurationMs -= 500 })
+				}
+				ui.Textf(c, "%.1f 秒", float64(cfg.General.LingerDurationMs)/1000.0).FontSize(13).Bold().TextColor(p.text)
+				if ui.Button(c.Key("dur-inc"), "+0.5s").Padding(4, 8).Radius(6).Clicked() && cfg.General.LingerDurationMs < 10000 {
+					sc.updateConfig(func(ac *config.AppConfig) { ac.General.LingerDurationMs += 500 })
+				}
+			})
+		})
+
+		row("锁定等比边距", "水平与垂直边距保持一致", func() {
+			linked := sc.marginLinked
+			if ui.Switch(c.Key("toggle-margin-link"), &linked).Changed() {
+				sc.marginLinked = linked
+				if linked {
+					sc.updateConfig(func(ac *config.AppConfig) { ac.Appearance.MarginY = ac.Appearance.MarginX })
+				}
+			}
+		})
+
+		row("水平边距 (X)", "屏幕左右边缘留白", func() {
+			ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+				if ui.Button(c.Key("mx-dec"), "−10").Padding(4, 8).Radius(6).Clicked() && cfg.Appearance.MarginX > 0 {
+					sc.updateConfig(func(ac *config.AppConfig) {
+						ac.Appearance.MarginX -= 10
+						if sc.marginLinked {
+							ac.Appearance.MarginY = ac.Appearance.MarginX
+						}
+					})
+				}
+				ui.Textf(c, "%d px", cfg.Appearance.MarginX).FontSize(13).Bold().TextColor(p.text)
+				if ui.Button(c.Key("mx-inc"), "+10").Padding(4, 8).Radius(6).Clicked() && cfg.Appearance.MarginX < 300 {
+					sc.updateConfig(func(ac *config.AppConfig) {
+						ac.Appearance.MarginX += 10
+						if sc.marginLinked {
+							ac.Appearance.MarginY = ac.Appearance.MarginX
+						}
+					})
+				}
+			})
+		})
+
+		row("垂直边距 (Y)", "屏幕上下边缘留白", func() {
+			ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+				if ui.Button(c.Key("my-dec"), "−10").Padding(4, 8).Radius(6).Clicked() && cfg.Appearance.MarginY > 0 {
+					sc.updateConfig(func(ac *config.AppConfig) { ac.Appearance.MarginY -= 10 })
+				}
+				ui.Textf(c, "%d px", cfg.Appearance.MarginY).FontSize(13).Bold().TextColor(p.text)
+				if ui.Button(c.Key("my-inc"), "+10").Padding(4, 8).Radius(6).Clicked() && cfg.Appearance.MarginY < 300 {
+					sc.updateConfig(func(ac *config.AppConfig) { ac.Appearance.MarginY += 10 })
+				}
+			})
+		})
+	})
+
+	// Group 3: Transition Animations
+	group(i18n.T("anim_title"), func() {
+		row(i18n.T("anim_title"), "按键出现与退场的过渡动画", func() {
+			anims := []string{"fade", "zoom", "float", "slide", "none"}
+			labels := []string{"淡入淡出", "弹性缩放", "浮动漂移", "平滑滑入", "无动效"}
+			animIdx := 0
+			for i, an := range anims {
+				if an == cfg.Appearance.Animation {
+					animIdx = i
+				}
+			}
+			if ui.Segmented(c.Key("anim-seg"), &animIdx, labels...).Changed() {
+				chosen := anims[animIdx]
+				sc.updateConfig(func(ac *config.AppConfig) { ac.Appearance.Animation = chosen })
+			}
+		})
+	})
+}
+
+// renderKeycapTab mirrors Cue Keycap tab with full 14 color palettes and typography.
+func (sc *SettingsController) renderKeycapTab(
+	c *ui.Context,
+	cfg config.AppConfig,
+	p palette,
+	group func(title string, rows func()),
+	row func(label, desc string, control func()),
+	stacked func(label, desc string, control func()),
+) {
+	ui.Text(c, i18n.T("keycap_title")).FontSize(20).Bold().TextColor(p.text)
+	sc.renderShowcaseStage(c, cfg, p)
+
+	// Group 1: Physical Model (Floating Popover Web Dropdown with Preview)
+	group(i18n.T("keycap_model"), func() {
+		styles := []struct {
+			id   string
+			name string
+		}{
+			{"lowprofile", "矮轴物理 (Low Profile)"},
+			{"minimal", "极简扁平 (Minimal Flat)"},
+			{"laptop", "剪刀脚 (Laptop Scissor)"},
+			{"pbt", "PBT 机械 (PBT Mechanical)"},
+			{"glass", "拟物玻璃 (Liquid Glass)"},
+			{"neon", "霓虹发光 (Neon Glow)"},
+			{"retro", "复古终端 (Retro CRT)"},
+			{"outline", "极简线框 (Wireframe Outline)"},
+		}
+
+		currentStyleName := "矮轴物理 (Low Profile)"
+		styleChoice := cfg.Appearance.Style
+		for _, st := range styles {
+			if st.id == cfg.Appearance.Style {
+				currentStyleName = st.name
+				break
+			}
+		}
+
+		row(i18n.T("keycap_model"), "选择不同轴体与键帽的物理倒角与阴影模型", func() {
+			sel := ui.SelectBase(c, &styleChoice)
+			sel.Trigger.
+				Height(36).
+				PaddingX(12).
+				Gap(10).
+				Radius(8).
+				Background(p.sidebar).
+				Border(1, p.hairline).
+				AlignItems(ui.Center).
+				Children(func() {
+					sc.renderStylePreviewIcon(c, cfg.Appearance.Style, p)
+					ui.Text(c, currentStyleName).FontSize(13).Bold().TextColor(p.text)
+					ui.Icon(c, iconChevronDown).Size(12, 12).TextColor(p.muted)
+				})
+
+			sel.Popup(func(panel ui.Element) {
+				panel.
+					Width(260).
+					Background(p.card).
+					Border(1, p.hairline).
+					Radius(10).
+					Padding(4).
+					Shadow(0, 12, 32, 0, ui.RGBA(0, 0, 0, 0.50))
+
+				for _, st := range styles {
+					styleItem := st
+					item := sel.Item(styleItem.id).
+						Height(36).
+						PaddingX(10).
+						Gap(10).
+						Radius(6).
+						AlignItems(ui.Center)
+
+					if item.Highlighted() {
+						item.Background(p.press)
+					} else if styleItem.id == cfg.Appearance.Style {
+						item.Background(p.hover)
+					}
+
+					item.Children(func() {
+						sc.renderStylePreviewIcon(c, styleItem.id, p)
+						ui.Text(c, styleItem.name).FontSize(12.5).TextColor(p.text).Grow(1)
+						if styleItem.id == cfg.Appearance.Style {
+							ui.Text(c, "✓").FontSize(13).Bold().TextColor(p.accent)
+						}
+					})
+				}
+			})
+
+			if sel.Trigger.Changed() {
+				sc.updateConfig(func(ac *config.AppConfig) {
+					ac.Appearance.Style = styleChoice
+				})
+				if sc.window != nil {
+					sc.window.Invalidate()
+				}
+			}
+		})
+	})
+
+	// Group 2: 14 Color Palettes (Floating Popover Web Dropdown with Preview)
+	group("预设色盘", func() {
+		currentSchemeName := "自定义配色"
+		paletteChoice := cfg.Color.Color
+		for _, sch := range MasterColorSchemes {
+			if strings.EqualFold(cfg.Color.Color, sch.Primary) {
+				currentSchemeName = sch.Name
+				paletteChoice = sch.Primary
+				break
+			}
+		}
+
+		row("键帽配色", "快速应用 Cue 经典配色方案", func() {
+			sel := ui.SelectBase(c, &paletteChoice)
+			sel.Trigger.
+				Height(36).
+				PaddingX(12).
+				Gap(10).
+				Radius(8).
+				Background(p.sidebar).
+				Border(1, p.hairline).
+				AlignItems(ui.Center).
+				Children(func() {
+					ui.Box(c).Size(22, 20).Radius(5).
+						Background(parseHexSafe(cfg.Color.Color, p.accent)).
+						Border(1.2, parseHexSafe(cfg.Color.SecondaryColor, p.hairline)).
+						Shadow(0, 2, 6, 0, ui.RGBA(0, 0, 0, 0.25)).
+						AlignItems(ui.Center).Justify(ui.Center).
+						Children(func() {
+							ui.Text(c, "A").FontSize(9.5).Bold().TextColor(parseHexSafe(cfg.Text.Color, p.text))
+						})
+					ui.Text(c, currentSchemeName).FontSize(13).Bold().TextColor(p.text)
+					ui.Icon(c, iconChevronDown).Size(12, 12).TextColor(p.muted)
+				})
+
+			sel.Popup(func(panel ui.Element) {
+				panel.
+					Width(260).
+					Background(p.card).
+					Border(1, p.hairline).
+					Radius(10).
+					Padding(4).
+					Shadow(0, 12, 32, 0, ui.RGBA(0, 0, 0, 0.50))
+
+				for _, scheme := range MasterColorSchemes {
+					sch := scheme
+					isSelected := strings.EqualFold(cfg.Color.Color, sch.Primary)
+					item := sel.Item(sch.Primary).
+						Height(36).
+						PaddingX(10).
+						Gap(10).
+						Radius(6).
+						AlignItems(ui.Center)
+
+					if item.Highlighted() {
+						item.Background(p.press)
+					} else if isSelected {
+						item.Background(p.hover)
+					}
+
+					item.Children(func() {
+						ui.Box(c).Size(22, 20).Radius(5).
+							Background(parseHexSafe(sch.Primary, p.accent)).
+							Border(1.2, parseHexSafe(sch.Secondary, p.hairline)).
+							Shadow(0, 2, 6, 0, ui.RGBA(0, 0, 0, 0.25)).
+							AlignItems(ui.Center).Justify(ui.Center).
+							Children(func() {
+								ui.Text(c, "A").FontSize(9.5).Bold().TextColor(parseHexSafe(sch.Text, p.text))
+							})
+						ui.Text(c, sch.Name).FontSize(12.5).TextColor(p.text).Grow(1)
+						if isSelected {
+							ui.Text(c, "✓").FontSize(13).Bold().TextColor(p.accent)
+						}
+					})
+				}
+			})
+
+			if sel.Trigger.Changed() {
+				for _, sch := range MasterColorSchemes {
+					if strings.EqualFold(sch.Primary, paletteChoice) {
+						sc.updateConfig(func(ac *config.AppConfig) {
+							ac.Color.Color = sch.Primary
+							ac.Color.SecondaryColor = sch.Secondary
+							ac.Text.Color = sch.Text
+							ac.Border.Color = sch.Secondary
+						})
+						break
+					}
+				}
+				if sc.window != nil {
+					sc.window.Invalidate()
+				}
+			}
+		})
+	})
+
+	// Group 3: Typography & Text Settings
+	group(i18n.T("text_formatting"), func() {
+		row(i18n.T("text_caps"), "统一键帽正文字母的大小写格式", func() {
+			caps := []string{"uppercase", "capitalize", "lowercase"}
+			labels := []string{"全大写 (AA)", "首字母大写 (Aa)", "全小写 (aa)"}
+			capIdx := 1
+			for i, cp := range caps {
+				if cp == cfg.Text.Caps {
+					capIdx = i
+				}
+			}
+			if ui.Segmented(c.Key("caps-seg"), &capIdx, labels...).Changed() {
+				chosen := caps[capIdx]
+				sc.updateConfig(func(ac *config.AppConfig) { ac.Text.Caps = chosen })
+			}
+		})
+
+		row(i18n.T("text_variant"), "按键正文的字符长短与图标呈现形式", func() {
+			vars := []string{"text", "text-short", "icon"}
+			labels := []string{"完整文字", "简写文字", "纯图标"}
+			varIdx := 1
+			for i, v := range vars {
+				if v == cfg.Text.Variant {
+					varIdx = i
+				}
+			}
+			if ui.Segmented(c.Key("var-seg"), &varIdx, labels...).Changed() {
+				chosen := vars[varIdx]
+				sc.updateConfig(func(ac *config.AppConfig) { ac.Text.Variant = chosen })
+			}
+		})
+
+		row("字体字号", "键帽正文字符的硬件渲染大小", func() {
+			ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+				if ui.Button(c.Key("ts-dec"), "−").Padding(4, 8).Radius(6).Clicked() && cfg.Text.Size > 16 {
+					sc.updateConfig(func(ac *config.AppConfig) { ac.Text.Size -= 2 })
+				}
+				ui.Textf(c, "%d px", cfg.Text.Size).FontSize(13).Bold().TextColor(p.text)
+				if ui.Button(c.Key("ts-inc"), "+").Padding(4, 8).Radius(6).Clicked() && cfg.Text.Size < 56 {
+					sc.updateConfig(func(ac *config.AppConfig) { ac.Text.Size += 2 })
+				}
+			})
+		})
+	})
+
+	// Group 4: Layout & Elements
+	group(i18n.T("display_elements"), func() {
+		row("按键图标", "显示修饰键专属系统图标", func() {
+			on := cfg.Layout.ShowIcon
+			if ui.Switch(c.Key("toggle-icon"), &on).Changed() {
+				sc.updateConfig(func(ac *config.AppConfig) { ac.Layout.ShowIcon = on })
+			}
+		})
+
+		row("特殊符号", "显示回车、退格等特殊按键符号 (↵ ⌫ ⇥ ↑)", func() {
+			on := cfg.Layout.ShowSymbol
+			if ui.Switch(c.Key("toggle-symbol"), &on).Changed() {
+				sc.updateConfig(func(ac *config.AppConfig) { ac.Layout.ShowSymbol = on })
+			}
+		})
+
+		row("连击倍率", "连续敲击同一按键时显示敲击次数 (×N)", func() {
+			on := cfg.Layout.ShowPressCount
+			if ui.Switch(c.Key("toggle-press-count"), &on).Changed() {
+				sc.updateConfig(func(ac *config.AppConfig) { ac.Layout.ShowPressCount = on })
+			}
+		})
+
+		row("修饰键高亮", "为修饰键单独应用强调色", func() {
+			on := cfg.Modifier.Highlight
+			if ui.Switch(c.Key("toggle-mod-hl"), &on).Changed() {
+				sc.updateConfig(func(ac *config.AppConfig) { ac.Modifier.Highlight = on })
+			}
+		})
+	})
+
+	// Group 5: Border & Corner Radius
+	group(i18n.T("border_title"), func() {
+		row("键帽边框", "显示键帽外边缘轮廓边框", func() {
+			on := cfg.Border.Enabled
+			if ui.Switch(c.Key("toggle-border"), &on).Changed() {
+				sc.updateConfig(func(ac *config.AppConfig) { ac.Border.Enabled = on })
+			}
+		})
+
+		row("边框粗细", "外边缘描边的像素宽度", func() {
+			ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+				if ui.Button(c.Key("bw-dec"), "−").Padding(4, 8).Radius(6).Clicked() && cfg.Border.Width > 1 {
+					sc.updateConfig(func(ac *config.AppConfig) { ac.Border.Width-- })
+				}
+				ui.Textf(c, "%d px", cfg.Border.Width).FontSize(13).Bold().TextColor(p.text)
+				if ui.Button(c.Key("bw-inc"), "+").Padding(4, 8).Radius(6).Clicked() && cfg.Border.Width < 6 {
+					sc.updateConfig(func(ac *config.AppConfig) { ac.Border.Width++ })
+				}
+			})
+		})
+
+		row("倒角圆角", "键帽四角的物理弧度半径", func() {
+			ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+				if ui.Button(c.Key("br-dec"), "−").Padding(4, 8).Radius(6).Clicked() && cfg.Border.Radius > 2 {
+					sc.updateConfig(func(ac *config.AppConfig) { ac.Border.Radius -= 2 })
+				}
+				ui.Textf(c, "%.1f px", cfg.Border.Radius).FontSize(13).Bold().TextColor(p.text)
+				if ui.Button(c.Key("br-inc"), "+").Padding(4, 8).Radius(6).Clicked() && cfg.Border.Radius < 24 {
+					sc.updateConfig(func(ac *config.AppConfig) { ac.Border.Radius += 2 })
+				}
+			})
+		})
+	})
+
+	// Group 6: Intelligent Action Subtitles
+	group("动作提示", func() {
+		row("快捷键提示字幕", "识别 Ctrl+C 复制、Ctrl+V 粘贴等常用快捷键意图", func() {
+			on := cfg.SemanticSub
+			if ui.Switch(c.Key("toggle-semantic-sub"), &on).Changed() {
+				sc.updateConfig(func(ac *config.AppConfig) { ac.SemanticSub = on })
+			}
+		})
+	})
+}
+
+// renderMouseTab mirrors Cue Mouse settings with clean Cupertino card groups.
+func (sc *SettingsController) renderMouseTab(
+	c *ui.Context,
+	cfg config.AppConfig,
+	p palette,
+	group func(title string, rows func()),
+	row func(label, desc string, control func()),
+) {
+	ui.Text(c, i18n.T("mouse_title")).FontSize(20).Bold().TextColor(p.text)
+
+	// Group 1: Cursor Highlight & Ring
+	group(i18n.T("mouse_click_ripple"), func() {
+		row("点击显示光圈", "按下鼠标按键时在光标处呈现高亮光圈", func() {
+			on := cfg.Mouse.ShowClicks
+			if ui.Switch(c.Key("toggle-mouse-clicks"), &on).Changed() {
+				sc.updateConfig(func(ac *config.AppConfig) { ac.Mouse.ShowClicks = on })
+			}
+		})
+
+		row("常驻高亮光圈", "始终在光标周围显示高亮光圈", func() {
+			on := cfg.Mouse.KeepHighlight
+			if ui.Switch(c.Key("toggle-always-hl"), &on).Changed() {
+				sc.updateConfig(func(ac *config.AppConfig) { ac.Mouse.KeepHighlight = on })
+			}
+		})
+
+		row("光圈尺寸", "高亮光圈的直径大小", func() {
+			ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+				if ui.Button(c.Key("ms-dec"), "−10").Padding(4, 8).Radius(6).Clicked() && cfg.Mouse.Size > 40 {
+					sc.updateConfig(func(ac *config.AppConfig) { ac.Mouse.Size -= 10 })
+				}
+				ui.Textf(c, "%d px", cfg.Mouse.Size).FontSize(13).Bold().TextColor(p.text)
+				if ui.Button(c.Key("ms-inc"), "+10").Padding(4, 8).Radius(6).Clicked() && cfg.Mouse.Size < 300 {
+					sc.updateConfig(func(ac *config.AppConfig) { ac.Mouse.Size += 10 })
+				}
+			})
+		})
+	})
+
+	// Group 2: Mouse Button & Wheel Indicator
+	group(i18n.T("mouse_indicator"), func() {
+		row("按键指示器", "在光标旁显示鼠标微动按键与滚轮状态", func() {
+			on := cfg.Mouse.ShowIndicator
+			if ui.Switch(c.Key("toggle-indicator"), &on).Changed() {
+				sc.updateConfig(func(ac *config.AppConfig) { ac.Mouse.ShowIndicator = on })
+			}
+		})
+
+		row("常驻显示", "无论是否有按键动作，始终显示微型指示器", func() {
+			on := cfg.Mouse.KeepIndicator
+			if ui.Switch(c.Key("toggle-keep-ind"), &on).Changed() {
+				sc.updateConfig(func(ac *config.AppConfig) { ac.Mouse.KeepIndicator = on })
+			}
+		})
+
+		row("指示器大小", "鼠标按键与滚轮指示图标的尺寸", func() {
+			ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+				if ui.Button(c.Key("is-dec"), "−5").Padding(4, 8).Radius(6).Clicked() && cfg.Mouse.IndicatorSize > 20 {
+					sc.updateConfig(func(ac *config.AppConfig) { ac.Mouse.IndicatorSize -= 5 })
+				}
+				ui.Textf(c, "%d px", cfg.Mouse.IndicatorSize).FontSize(13).Bold().TextColor(p.text)
+				if ui.Button(c.Key("is-inc"), "+5").Padding(4, 8).Radius(6).Clicked() && cfg.Mouse.IndicatorSize < 120 {
+					sc.updateConfig(func(ac *config.AppConfig) { ac.Mouse.IndicatorSize += 5 })
+				}
+			})
+		})
+
+		row("相对光标偏移", "指示器距离光标尖端的相对距离", func() {
+			ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+				if ui.Button(c.Key("io-dec"), "−5").Padding(4, 8).Radius(6).Clicked() && cfg.Mouse.IndicatorOffsetX > 10 {
+					sc.updateConfig(func(ac *config.AppConfig) {
+						ac.Mouse.IndicatorOffsetX -= 5
+						ac.Mouse.IndicatorOffsetY -= 5
+					})
+				}
+				ui.Textf(c, "%d px", cfg.Mouse.IndicatorOffsetX).FontSize(13).Bold().TextColor(p.text)
+				if ui.Button(c.Key("io-inc"), "+5").Padding(4, 8).Radius(6).Clicked() && cfg.Mouse.IndicatorOffsetX < 150 {
+					sc.updateConfig(func(ac *config.AppConfig) {
+						ac.Mouse.IndicatorOffsetX += 5
+						ac.Mouse.IndicatorOffsetY += 5
+					})
+				}
+			})
+		})
+	})
+
+	// Group 3: Event & Drag
+	group("手势与拖拽", func() {
+		row("拖拽识别阈值", "鼠标按下后移动超过该像素数识别为 Drag 动作", func() {
+			ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+				if ui.Button(c.Key("dt-dec"), "−10").Padding(4, 8).Radius(6).Clicked() && cfg.General.DragThreshold > 10 {
+					sc.updateConfig(func(ac *config.AppConfig) { ac.General.DragThreshold -= 10 })
+				}
+				ui.Textf(c, "%d px", cfg.General.DragThreshold).FontSize(13).Bold().TextColor(p.text)
+				if ui.Button(c.Key("dt-inc"), "+10").Padding(4, 8).Radius(6).Clicked() && cfg.General.DragThreshold < 150 {
+					sc.updateConfig(func(ac *config.AppConfig) { ac.General.DragThreshold += 10 })
+				}
+			})
+		})
+	})
+}
+
+// renderAboutTab displays clean architecture and system information.
+func (sc *SettingsController) renderAboutTab(
+	c *ui.Context,
+	p palette,
+	group func(title string, rows func()),
+	row func(label, desc string, control func()),
+) {
+	ui.Text(c, i18n.T("tab_about")).FontSize(20).Bold().TextColor(p.text)
+
+	group("系统信息", func() {
+		row(i18n.T("app_name"), i18n.T("about_desc"), func() {})
+		row("渲染后端", i18n.T("renderer_architecture"), func() {})
+		row("技术底座", i18n.T("engine_architecture"), func() {})
+		row("灵感来源", i18n.T("original_credits"), func() {})
+		row("设计理念", i18n.T("about_philosophy"), func() {})
+	})
+
+	group("配置管理", func() {
+		row("恢复出厂设置", "还原所有设置项至官方初始标准参数", func() {
+			if ui.Button(c.Key("btn-reset-factory"), i18n.T("reset_defaults")).
+				Padding(8, 16).
+				Radius(8).
+				Background(p.accent).
+				TextColor(p.onAccent).
+				Clicked() {
+				sc.showResetConfirm = true
+				if sc.window != nil {
+					sc.window.Invalidate()
+				}
+			}
+		})
+	})
+}
+
+// renderAlignmentSelector renders Cue dual positioning controls:
+// 1. Tactile 3x3 directional button matrix on the left (quick, tactile arrow clicks)
+// 2. 16:10 interactive monitor screen mini-map on the right (with glass display border and active HUD indicator)
+// Both are seamlessly synchronized and clickable!
+func (sc *SettingsController) renderAlignmentSelector(c *ui.Context, cfg config.AppConfig, p palette) {
+	items := [][]struct {
+		align config.Alignment
+		arrow string
+	}{
+		{{config.AlignTopLeft, "↖"}, {config.AlignTopCenter, "↑"}, {config.AlignTopRight, "↗"}},
+		{{config.AlignCenterLeft, "←"}, {config.AlignCenter, "•"}, {config.AlignCenterRight, "→"}},
+		{{config.AlignBottomLeft, "↙"}, {config.AlignBottomCenter, "↓"}, {config.AlignBottomRight, "↘"}},
+	}
+
+	ui.Row(c.Key("align-dual-control")).Gap(14).AlignItems(ui.Center).Children(func() {
+		// 1. Tactile 9-Grid Arrow Buttons
+		ui.Column(c.Key("align-tactile-9grid")).Gap(4).Children(func() {
+			for r, rowAligns := range items {
+				ui.Row(c.Key(fmt.Sprintf("grid-row-%d", r))).Gap(4).Children(func() {
+					for _, item := range rowAligns {
+						al := item.align
+						isSelected := cfg.Appearance.Alignment == al
+						btn := ui.ButtonBase(c.Key("tactile-align-" + string(al))).
+							Size(34, 30).
+							Radius(6).
+							AlignItems(ui.Center).
+							Justify(ui.Center).
+							FocusRing(false)
+
+						if isSelected {
+							btn.Background(p.accent)
+						} else if btn.Hovered() {
+							btn.Background(p.press)
+						} else {
+							btn.Background(p.sidebar)
+						}
+						btn.Border(1, p.hairline)
+
+						textColor := p.muted
+						if isSelected {
+							textColor = p.onAccent
+						}
+
+						btn.Children(func() {
+							ui.Text(c, item.arrow).FontSize(13).Bold().TextColor(textColor)
+						})
+
+						if btn.Clicked() {
+							sc.updateConfig(func(ac *config.AppConfig) { ac.Appearance.Alignment = al })
+							if sc.window != nil {
+								sc.window.Invalidate()
+							}
+						}
+					}
+				})
+			}
+		})
+
+		// 2. Realistic Apple Studio Display Desktop Computer Mockup
+		ui.Column(c.Key("align-mac-computer-stage")).AlignItems(ui.Center).Children(func() {
+			// Monitor Display Unit (Retina Display + Bezel + FaceTime Camera)
+			ui.Column(c.Key("mac-display-unit")).
+				Width(192).
+				Height(124).
+				Radius(10).
+				Background(ui.Hex("#18181b")). // Sleek anodized aluminum outer frame
+				Border(1.5, ui.Hex("#3f3f46")).
+				Padding(5).
+				Shadow(0, 10, 24, 0, ui.RGBA(0, 0, 0, 0.45)).
+				Children(func() {
+					// Top Bezel with Centered FaceTime HD Camera Dot
+					ui.Row(c).Fill().Height(6).Justify(ui.Center).AlignItems(ui.Center).Children(func() {
+						ui.Box(c).Size(4, 4).Radius(2).Background(ui.Hex("#09090b")).Border(0.6, ui.Hex("#27272a"))
+					})
+
+					// Inner Screen: macOS Sonoma / Monterey Desktop Wallpaper Canvas
+					ui.Column(c.Key("mac-desktop-screen")).
+						Fill().
+						Radius(6).
+						Background(ui.Hex("#0f172a")). // Midnight Sonoma gradient base
+						Padding(3).
+						Gap(2).
+						Children(func() {
+							// Top macOS Glass Menu Bar
+							ui.Row(c).Height(7).Fill().PaddingX(4).AlignItems(ui.Center).Justify(ui.SpaceBetween).
+								Background(ui.RGBA(255, 255, 255, 0.12)).
+								Radius(2).
+								Children(func() {
+									// Apple logo dot + menus
+									ui.Row(c).Gap(2).AlignItems(ui.Center).Children(func() {
+										ui.Box(c).Size(3, 3).Radius(1.5).Background(ui.Hex("#ffffff"))
+										ui.Box(c).Size(8, 2).Radius(1).Background(ui.RGBA(255, 255, 255, 0.4))
+										ui.Box(c).Size(6, 2).Radius(1).Background(ui.RGBA(255, 255, 255, 0.4))
+									})
+									// Status icons dots
+									ui.Row(c).Gap(2).AlignItems(ui.Center).Children(func() {
+										ui.Box(c).Size(3, 2).Radius(0.5).Background(ui.RGBA(255, 255, 255, 0.5))
+										ui.Box(c).Size(4, 2).Radius(0.5).Background(ui.RGBA(255, 255, 255, 0.5))
+									})
+								})
+
+							// Interactive 3x3 Desktop Grid Matrix
+							ui.Column(c.Key("mac-desktop-grid")).Fill().Gap(2).Children(func() {
+								for r, rowAligns := range items {
+									ui.Row(c.Key(fmt.Sprintf("mac-screen-row-%d", r))).Fill().Gap(2).Children(func() {
+										for _, item := range rowAligns {
+											al := item.align
+											isSelected := cfg.Appearance.Alignment == al
+											cell := ui.ButtonBase(c.Key("mac-screen-cell-" + string(al))).
+												Grow(1).
+												Fill().
+												Radius(3).
+												AlignItems(ui.Center).
+												Justify(ui.Center).
+												FocusRing(false)
+
+											if isSelected {
+												cell.Background(p.accent.Alpha(0.28))
+												cell.Border(1.2, p.accent)
+											} else if cell.Hovered() {
+												cell.Background(ui.RGBA(255, 255, 255, 0.12))
+											} else {
+												cell.Background(ui.Transparent)
+											}
+
+											cell.Children(func() {
+												if isSelected {
+													// Illuminated Cue HUD Pill on macOS Desktop
+													ui.Row(c).
+														Padding(1, 4).
+														Radius(3).
+														Background(p.accent).
+														Shadow(0, 2, 6, 0, p.accent.Alpha(0.6)).
+														AlignItems(ui.Center).
+														Gap(2).
+														Children(func() {
+															ui.Text(c, "⌘").FontSize(7.5).Bold().TextColor(p.onAccent)
+															ui.Text(c, "HUD").FontSize(7.5).Bold().TextColor(p.onAccent)
+														})
+												} else {
+													ui.Box(c).Size(3, 3).Radius(1.5).Background(ui.RGBA(255, 255, 255, 0.25))
+												}
+											})
+
+											if cell.Clicked() {
+												sc.updateConfig(func(ac *config.AppConfig) { ac.Appearance.Alignment = al })
+												if sc.window != nil {
+													sc.window.Invalidate()
+												}
+											}
+										}
+									})
+								}
+							})
+
+							// Bottom macOS Floating Glass Dock
+							ui.Row(c).Height(6).Fill().Justify(ui.Center).AlignItems(ui.Center).Children(func() {
+								ui.Row(c).
+									Height(5).
+									PaddingX(4).
+									Radius(2.5).
+									Background(ui.RGBA(255, 255, 255, 0.22)).
+									Border(0.5, ui.RGBA(255, 255, 255, 0.35)).
+									Gap(3).
+									AlignItems(ui.Center).
+									Children(func() {
+										ui.Box(c).Size(3, 3).Radius(1).Background(ui.Hex("#38bdf8")) // Finder
+										ui.Box(c).Size(3, 3).Radius(1).Background(ui.Hex("#f43f5e")) // Safari
+										ui.Box(c).Size(3, 3).Radius(1).Background(ui.Hex("#ec4899")) // Music
+										ui.Box(c).Size(3, 3).Radius(1).Background(ui.Hex("#10b981")) // Terminal
+									})
+							})
+						})
+				})
+
+			// Aluminum Display Stand: Neck
+			ui.Box(c.Key("mac-stand-neck")).
+				Width(28).
+				Height(14).
+				Background(ui.Hex("#71717a")). // Brushed aluminum neck
+				Border(0.8, ui.Hex("#52525b"))
+
+			// Aluminum Display Stand: Weighted Desktop Base Plate with Shadow
+			ui.Box(c.Key("mac-stand-base")).
+				Width(76).
+				Height(4).
+				Radius(2).
+				Background(ui.Hex("#a1a1aa")). // Sleek metallic base foot
+				Border(0.8, ui.Hex("#71717a")).
+				Shadow(0, 4, 8, 0, ui.RGBA(0, 0, 0, 0.35))
+		})
+	})
+}
+
+// renderStylePreviewIcon renders a high-fidelity miniature keycap previewing physical styling models.
+func (sc *SettingsController) renderStylePreviewIcon(c *ui.Context, styleId string, p palette) {
+	bg := p.press
+	border := p.hairline
+	textColor := p.text
+	radius := float32(5)
+	borderW := float32(1.0)
+	shadow := float32(0)
+
+	switch styleId {
+	case "lowprofile":
+		radius = 6
+		bg = p.press
+	case "minimal":
+		radius = 3
+		bg = p.canvas
+		borderW = 0
+	case "laptop":
+		radius = 4
+		bg = p.sidebar
+		border = p.muted.Alpha(0.4)
+	case "pbt":
+		radius = 6
+		bg = p.sidebar
+		borderW = 2.0
+		border = p.accent.Alpha(0.6)
+		shadow = 4
+	case "glass":
+		radius = 6
+		bg = ui.RGBA(255, 255, 255, 0.18)
+		border = ui.RGBA(255, 255, 255, 0.50)
+	case "neon":
+		radius = 5
+		bg = ui.Hex("#09090b")
+		border = ui.Hex("#00FF6A")
+		textColor = ui.Hex("#00FF6A")
+	case "retro":
+		radius = 2
+		bg = ui.Hex("#1c1917")
+		border = ui.Hex("#22c55e")
+		textColor = ui.Hex("#22c55e")
+	case "outline":
+		radius = 5
+		bg = ui.Transparent
+		border = p.accent
+		textColor = p.accent
+	}
+
+	box := ui.Box(c).Size(22, 20).Radius(radius).
+		Background(bg).
+		AlignItems(ui.Center).Justify(ui.Center)
+
+	if borderW > 0 {
+		box.Border(borderW, border)
+	}
+	if shadow > 0 {
+		box.Shadow(0, 2, shadow, 0, ui.RGBA(0, 0, 0, 0.35))
+	}
+
+	box.Children(func() {
+		ui.Text(c, "A").FontSize(9.5).Bold().TextColor(textColor)
+	})
+}
+
+// renderResetConfirmDialog renders the Jobsian confirmation modal before restoring default parameters.
+func (sc *SettingsController) renderResetConfirmDialog(c *ui.Context, p palette) {
+	ui.Box(c.Key("modal-backdrop")).
+		Absolute().
+		Fill().
+		Background(ui.RGBA(0, 0, 0, 0.50)).
+		AlignItems(ui.Center).
+		Justify(ui.Center).
+		Children(func() {
+			ui.Column(c.Key("reset-confirm-box")).
+				Width(420).
+				Background(p.card).
+				Border(1, p.hairline).
+				Radius(14).
+				Padding(24).
+				Gap(16).
+				Shadow(0, 16, 40, 0, ui.RGBA(0, 0, 0, 0.45)).
+				Children(func() {
+					ui.Row(c).AlignItems(ui.Center).Gap(12).Children(func() {
+						ui.Box(c).Size(40, 40).Radius(20).Background(ui.Hex("#ff3b30").Alpha(0.12)).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
+							ui.Icon(c, iconReset).Size(22, 22).TextColor(ui.Hex("#ff3b30"))
+						})
+						ui.Column(c).Gap(2).Children(func() {
+							ui.Text(c, "确认恢复出厂设置？").FontSize(16).Bold().TextColor(p.text)
+							ui.Text(c, "此操作不可撤销").FontSize(11.5).TextColor(p.muted)
+						})
+					})
+
+					ui.Text(c, "将重置所有自定义键帽颜色、9 宫格定位、过滤策略、快捷键与动画过渡风格，立即还原为 Cue 官方出厂标准参数。").
+						FontSize(13).
+						TextColor(p.muted).
+						LineHeight(1.5)
+
+					ui.Row(c).Justify(ui.End).Gap(10).Margin(8, 0, 0, 0).Children(func() {
+						if ui.Button(c.Key("cancel-reset-btn"), "取消").
+							Padding(8, 16).
+							Radius(8).
+							Background(p.sidebar).
+							TextColor(p.text).
+							Clicked() {
+							sc.showResetConfirm = false
+							if sc.window != nil {
+								sc.window.Invalidate()
+							}
+						}
+
+						if ui.Button(c.Key("confirm-reset-btn"), "确认恢复出厂").
+							Padding(8, 18).
+							Radius(8).
+							Background(ui.Hex("#ff3b30")).
+							TextColor(ui.Hex("#ffffff")).
+							Bold().
+							Clicked() {
+							sc.showResetConfirm = false
+							sc.updateConfig(func(ac *config.AppConfig) {
+								*ac = config.DefaultConfig()
+							})
+							if sc.vState != nil {
+								sc.vState.SetTheme(theme.ThemeLiquidGlass)
+							}
+							if sc.engine != nil {
+								sc.engine.SetFilterMode(engine.FilterSmart)
+								sc.engine.SetSoundActive(false)
+								sc.engine.SetThemeName("Liquid Glass")
+								sc.engine.SetWordGrouping(false)
+							}
+							if sc.window != nil {
+								sc.window.Invalidate()
+							}
+						}
+					})
+				})
+		})
+}
+
+// isAllowedKey checks if keyName is contained in the allowed list (case-insensitive).
+func isAllowedKey(key string, list []string) bool {
+	for _, k := range list {
+		if strings.EqualFold(k, key) {
+			return true
+		}
+	}
+	return false
+}
+
+// toggleAllowedKey toggles membership of a key in the allowed list.
+func (sc *SettingsController) toggleAllowedKey(key string) {
+	sc.updateConfig(func(ac *config.AppConfig) {
+		if isAllowedKey(key, ac.General.AllowedKeys) {
+			var rem []string
+			for _, k := range ac.General.AllowedKeys {
+				if !strings.EqualFold(k, key) {
+					rem = append(rem, k)
+				}
+			}
+			ac.General.AllowedKeys = rem
+		} else {
+			ac.General.AllowedKeys = append(ac.General.AllowedKeys, key)
+		}
+	})
+	if sc.window != nil {
+		sc.window.Invalidate()
+	}
+}
+
+// renderKeycapButton renders a tactile, interactive virtual key for the filter matrix.
+func (sc *SettingsController) renderKeycapButton(c *ui.Context, rawKey, label string, w, h float32, grow float32, cfg config.AppConfig, p palette) {
+	allowed := isAllowedKey(rawKey, cfg.General.AllowedKeys)
+	btn := ui.ButtonBase(c.Key("vkey-" + rawKey)).
+		Height(h).
+		Radius(6).
+		AlignItems(ui.Center).
+		Justify(ui.Center).
+		FocusRing(false)
+
+	if w > 0 {
+		btn.Width(w)
+	}
+	if grow > 0 {
+		btn.Grow(grow)
+	}
+
+	bg := p.sidebar
+	textColor := p.muted
+	border := p.hairline
+	if allowed {
+		bg = p.accent.Alpha(0.24)
+		border = p.accent
+		textColor = p.accent
+	}
+
+	btn.Background(bg)
+	btn.Border(1, border)
+
+	btn.Children(func() {
+		ui.Text(c, label).FontSize(11).Bold().TextColor(textColor)
+	})
+
+	if btn.Clicked() {
+		sc.toggleAllowedKey(rawKey)
+	}
+}
+
+// renderCustomFilterModal mirrors Cue original custom-filter.tsx:
+// a realistic interactive virtual ANSI keyboard, mouse layout, and numpad matrix.
+func (sc *SettingsController) renderCustomFilterModal(c *ui.Context, cfg config.AppConfig, p palette) {
+	ui.Box(c.Key("filter-modal-backdrop")).
+		Absolute().
+		Fill().
+		Background(ui.RGBA(0, 0, 0, 0.55)).
+		AlignItems(ui.Center).
+		Justify(ui.Center).
+		Children(func() {
+			ui.Column(c.Key("filter-modal-card")).
+				Width(740).
+				MaxHeight(560).
+				Background(p.card).
+				Border(1, p.hairline).
+				Radius(14).
+				Padding(20).
+				Gap(14).
+				Shadow(0, 16, 40, 0, ui.RGBA(0, 0, 0, 0.50)).
+				Children(func() {
+					// Header
+					ui.Row(c).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
+						ui.Column(c).Gap(2).Children(func() {
+							ui.Text(c, "自定义按键过滤面板 (Custom Filter)").FontSize(16).Bold().TextColor(p.text)
+							ui.Text(c, "高亮键位将在屏幕上正常呈现，暗色键位将被静音过滤").FontSize(11.5).TextColor(p.muted)
+						})
+						if ui.Button(c.Key("close-filter-modal"), "✕ 完成").Padding(6, 14).Radius(6).Background(p.accent).TextColor(p.onAccent).Bold().Clicked() {
+							sc.showCustomFilterModal = false
+							if sc.window != nil {
+								sc.window.Invalidate()
+							}
+						}
+					})
+
+					// Tab Switcher & Quick Actions Row
+					ui.Row(c).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
+						// 3 Virtual Tabs
+						tabs := []string{"Keyboard", "Mouse", "Numpad"}
+						tabLabels := []string{"键盘 (Keyboard)", "鼠标 (Mouse)", "数字键盘 (Numpad)"}
+						tabIdx := 0
+						for i, tb := range tabs {
+							if tb == sc.filterTab {
+								tabIdx = i
+							}
+						}
+						if ui.Segmented(c.Key("filter-tab-seg"), &tabIdx, tabLabels...).Changed() {
+							sc.filterTab = tabs[tabIdx]
+							if sc.window != nil {
+								sc.window.Invalidate()
+							}
+						}
+
+						// Quick Presets
+						ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+							allAlpha := []string{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9"}
+							allMods := []string{"Ctrl", "Shift", "Alt", "Win"}
+
+							if ui.Button(c.Key("filter-all-btn"), "全选").Padding(4, 9).Radius(6).Background(p.sidebar).TextColor(p.text).FontSize(11).Clicked() {
+								allCommon := append(append([]string{}, allAlpha...), allMods...)
+								allCommon = append(allCommon, "Enter", "Space", "Backspace", "Tab", "Esc", "Insert", "Delete", "Home", "End", "PageUp", "PageDown", "Up", "Down", "Left", "Right", "Left Click", "Right Click", "Middle Click", "Drag", "Scroll Up", "Scroll Down")
+								sc.updateConfig(func(ac *config.AppConfig) { ac.General.AllowedKeys = allCommon })
+							}
+							if ui.Button(c.Key("filter-clear-btn"), "清空").Padding(4, 9).Radius(6).Background(p.sidebar).TextColor(p.text).FontSize(11).Clicked() {
+								sc.updateConfig(func(ac *config.AppConfig) { ac.General.AllowedKeys = []string{} })
+							}
+							if ui.Button(c.Key("filter-mods-btn"), "仅修饰键").Padding(4, 9).Radius(6).Background(p.sidebar).TextColor(p.text).FontSize(11).Clicked() {
+								sc.updateConfig(func(ac *config.AppConfig) { ac.General.AllowedKeys = allMods })
+							}
+							if ui.Button(c.Key("filter-alpha-btn"), "字母与数字").Padding(4, 9).Radius(6).Background(p.sidebar).TextColor(p.text).FontSize(11).Clicked() {
+								sc.updateConfig(func(ac *config.AppConfig) { ac.General.AllowedKeys = allAlpha })
+							}
+						})
+					})
+
+					// Main Interactive Body
+					ui.Column(c.Key("filter-body-container")).
+						Fill().
+						Padding(12).
+						Radius(10).
+						Background(p.sidebar).
+						Border(1, p.hairline).
+						AlignItems(ui.Center).
+						Justify(ui.Center).
+						Children(func() {
+							switch sc.filterTab {
+							case "Mouse":
+								// Mouse Visual Matrix (Cue original mouse silhouette)
+								ui.Row(c.Key("mouse-filter-matrix")).Gap(18).AlignItems(ui.Center).Children(func() {
+									// Left Click Button
+									sc.renderKeycapButton(c, "Left Click", "左键 Left", 64, 48, 0, cfg, p)
+
+									// Center Column (Middle, Scroll, Drag)
+									ui.Column(c).Gap(6).AlignItems(ui.Center).Children(func() {
+										sc.renderKeycapButton(c, "Middle Click", "中键 Middle", 80, 32, 0, cfg, p)
+										sc.renderKeycapButton(c, "Scroll Up", "滚轮向上 ↑", 80, 30, 0, cfg, p)
+										sc.renderKeycapButton(c, "Scroll Down", "滚轮向下 ↓", 80, 30, 0, cfg, p)
+										sc.renderKeycapButton(c, "Drag", "鼠标拖拽 Drag", 80, 32, 0, cfg, p)
+									})
+
+									// Right Click Button
+									sc.renderKeycapButton(c, "Right Click", "右键 Right", 64, 48, 0, cfg, p)
+								})
+
+							case "Numpad":
+								// 4x5 Numeric Keypad
+								ui.Column(c.Key("numpad-filter-matrix")).Gap(5).Width(240).Children(func() {
+									// Row 1: NumLock / * -
+									ui.Row(c).Gap(5).Children(func() {
+										sc.renderKeycapButton(c, "NumLock", "Num", 52, 34, 0, cfg, p)
+										sc.renderKeycapButton(c, "/", "/", 52, 34, 0, cfg, p)
+										sc.renderKeycapButton(c, "*", "*", 52, 34, 0, cfg, p)
+										sc.renderKeycapButton(c, "-", "-", 52, 34, 0, cfg, p)
+									})
+									// Row 2: 7 8 9 +
+									ui.Row(c).Gap(5).Children(func() {
+										sc.renderKeycapButton(c, "7", "7", 52, 34, 0, cfg, p)
+										sc.renderKeycapButton(c, "8", "8", 52, 34, 0, cfg, p)
+										sc.renderKeycapButton(c, "9", "9", 52, 34, 0, cfg, p)
+										sc.renderKeycapButton(c, "+", "+", 52, 34, 0, cfg, p)
+									})
+									// Row 3: 4 5 6
+									ui.Row(c).Gap(5).Children(func() {
+										sc.renderKeycapButton(c, "4", "4", 52, 34, 0, cfg, p)
+										sc.renderKeycapButton(c, "5", "5", 52, 34, 0, cfg, p)
+										sc.renderKeycapButton(c, "6", "6", 52, 34, 0, cfg, p)
+										ui.Box(c).Size(52, 34) // placeholder
+									})
+									// Row 4: 1 2 3 Enter
+									ui.Row(c).Gap(5).Children(func() {
+										sc.renderKeycapButton(c, "1", "1", 52, 34, 0, cfg, p)
+										sc.renderKeycapButton(c, "2", "2", 52, 34, 0, cfg, p)
+										sc.renderKeycapButton(c, "3", "3", 52, 34, 0, cfg, p)
+										sc.renderKeycapButton(c, "Enter", "Enter", 52, 34, 0, cfg, p)
+									})
+									// Row 5: 0 .
+									ui.Row(c).Gap(5).Children(func() {
+										sc.renderKeycapButton(c, "0", "0", 109, 34, 0, cfg, p)
+										sc.renderKeycapButton(c, ".", ".", 52, 34, 0, cfg, p)
+										ui.Box(c).Size(52, 34) // placeholder
+									})
+								})
+
+							default: // "Keyboard"
+								// Realistic 6-Row ANSI Keyboard (Cue custom-filter.tsx layout)
+								ui.Column(c.Key("keyboard-filter-matrix")).Gap(5).Fill().Children(func() {
+									// Row 1: Esc, F1-F12, Ins, Del
+									ui.Row(c).Gap(4).Fill().Children(func() {
+										sc.renderKeycapButton(c, "Esc", "Esc", 42, 32, 0, cfg, p)
+										for i := 1; i <= 12; i++ {
+											fk := fmt.Sprintf("F%d", i)
+											sc.renderKeycapButton(c, fk, fk, 36, 32, 1, cfg, p)
+										}
+										sc.renderKeycapButton(c, "Insert", "Ins", 38, 32, 0, cfg, p)
+										sc.renderKeycapButton(c, "Delete", "Del", 38, 32, 0, cfg, p)
+									})
+
+									// Row 2: ~ 1 2 3 4 5 6 7 8 9 0 - = Backspace Home
+									ui.Row(c).Gap(4).Fill().Children(func() {
+										sc.renderKeycapButton(c, "`", "~", 36, 32, 0, cfg, p)
+										for _, d := range []string{"1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-", "="} {
+											sc.renderKeycapButton(c, d, d, 36, 32, 1, cfg, p)
+										}
+										sc.renderKeycapButton(c, "Backspace", "⌫", 58, 32, 0, cfg, p)
+										sc.renderKeycapButton(c, "Home", "Home", 38, 32, 0, cfg, p)
+									})
+
+									// Row 3: Tab Q W E R T Y U I O P [ ] \ End
+									ui.Row(c).Gap(4).Fill().Children(func() {
+										sc.renderKeycapButton(c, "Tab", "Tab ⇥", 50, 32, 0, cfg, p)
+										for _, q := range []string{"Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P", "[", "]", "\\"} {
+											sc.renderKeycapButton(c, q, q, 36, 32, 1, cfg, p)
+										}
+										sc.renderKeycapButton(c, "End", "End", 38, 32, 0, cfg, p)
+									})
+
+									// Row 4: Caps A S D F G H J K L ; ' Enter PgUp
+									ui.Row(c).Gap(4).Fill().Children(func() {
+										sc.renderKeycapButton(c, "CapsLock", "Caps ⇪", 58, 32, 0, cfg, p)
+										for _, a := range []string{"A", "S", "D", "F", "G", "H", "J", "K", "L", ";", "'"} {
+											sc.renderKeycapButton(c, a, a, 36, 32, 1, cfg, p)
+										}
+										sc.renderKeycapButton(c, "Enter", "Enter ↵", 66, 32, 0, cfg, p)
+										sc.renderKeycapButton(c, "PageUp", "PgUp", 38, 32, 0, cfg, p)
+									})
+
+									// Row 5: Shift Z X C V B N M , . / Shift Up PgDn
+									ui.Row(c).Gap(4).Fill().Children(func() {
+										sc.renderKeycapButton(c, "Shift", "Shift ⇧", 72, 32, 0, cfg, p)
+										for _, z := range []string{"Z", "X", "C", "V", "B", "N", "M", ",", ".", "/"} {
+											sc.renderKeycapButton(c, z, z, 36, 32, 1, cfg, p)
+										}
+										sc.renderKeycapButton(c, "Shift", "Shift ⇧", 56, 32, 0, cfg, p)
+										sc.renderKeycapButton(c, "Up", "↑", 36, 32, 0, cfg, p)
+										sc.renderKeycapButton(c, "PageDown", "PgDn", 38, 32, 0, cfg, p)
+									})
+
+									// Row 6: Ctrl Alt Win Space Ctrl Left Down Right
+									ui.Row(c).Gap(4).Fill().Children(func() {
+										sc.renderKeycapButton(c, "Ctrl", "Ctrl ⌃", 46, 34, 0, cfg, p)
+										sc.renderKeycapButton(c, "Alt", "Alt ⌥", 42, 34, 0, cfg, p)
+										sc.renderKeycapButton(c, "Win", "Win ⌘", 42, 34, 0, cfg, p)
+										sc.renderKeycapButton(c, "Space", "Space ␣", 0, 34, 4, cfg, p)
+										sc.renderKeycapButton(c, "Ctrl", "Ctrl", 46, 34, 0, cfg, p)
+										sc.renderKeycapButton(c, "Left", "←", 36, 34, 0, cfg, p)
+										sc.renderKeycapButton(c, "Down", "↓", 36, 34, 0, cfg, p)
+										sc.renderKeycapButton(c, "Right", "→", 36, 34, 0, cfg, p)
+									})
+								})
+							}
+						})
+				})
+		})
+}
