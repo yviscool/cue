@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"runtime"
 	"strings"
@@ -94,9 +95,46 @@ func isToggleShortcutMatch(ev hook.InputEvent, shortcutTokens []string) bool {
 	return strings.EqualFold(strings.TrimSpace(ev.KeyName), reqKey)
 }
 
+// setFilter is the only write path for the tray capture-mode items. It persists
+// the choice and lets Store.OnChange drive the engine through applyConfig.
+func (a *app) setFilter(filter string) {
+	if a.store == nil {
+		return
+	}
+	if err := a.store.Update(func(c *config.AppConfig) { c.General.Filter = filter }); err != nil {
+		log.Printf("save filter %q: %v", filter, err)
+	}
+}
+
+func (a *app) refreshTrayMenu() {
+	if a.tray != nil {
+		a.tray.SetMenu(a.buildTrayMenu())
+	}
+}
+
+// reportConfigError keeps the last good configuration active and tells the user
+// through the tray tooltip, where they will look when a manual edit appears to
+// do nothing.
+func (a *app) reportConfigError(err error) {
+	log.Printf("config reload rejected, keeping last good config: %v", err)
+	if a.tray == nil {
+		return
+	}
+	a.tray.SetToolTip("Cue · 配置有误，已保留上次设置")
+	time.AfterFunc(6*time.Second, func() {
+		if a.tray != nil {
+			a.tray.SetToolTip("Cue · 演示与舞台信号")
+		}
+	})
+}
+
 // buildTrayMenu constructs the context menu dynamically with active locale strings.
 func (a *app) buildTrayMenu() *mygo.Menu {
 	curLang := i18n.Instance().GetLanguage()
+	curFilter := ""
+	if a.store != nil {
+		curFilter = a.store.Get().General.Filter
+	}
 
 	var langItems []*mygo.MenuItem
 	for _, l := range i18n.SupportedLanguages {
@@ -125,23 +163,30 @@ func (a *app) buildTrayMenu() *mygo.Menu {
 		},
 		mygo.Separator(),
 		{
-			Label: i18n.T("tray_smart"),
+			ID:      "filter-smart",
+			Label:   i18n.T("tray_smart"),
+			Type:    mygo.MenuItemRadio,
+			Checked: curFilter == "modifiers" || curFilter == "",
 			Click: func(*mygo.MenuItem, *mygo.Window) {
-				a.eng.SetFilterMode(engine.FilterSmart)
-				_ = a.store.Update(func(c *config.AppConfig) { c.General.Filter = "modifiers" })
+				a.setFilter("modifiers")
 			},
 		},
 		{
-			Label: i18n.T("tray_all"),
+			ID:      "filter-all",
+			Label:   i18n.T("tray_all"),
+			Type:    mygo.MenuItemRadio,
+			Checked: curFilter == "none",
 			Click: func(*mygo.MenuItem, *mygo.Window) {
-				a.eng.SetFilterMode(engine.FilterAll)
-				_ = a.store.Update(func(c *config.AppConfig) { c.General.Filter = "none" })
+				a.setFilter("none")
 			},
 		},
 		{
-			Label: i18n.T("tray_silent"),
+			ID:      "filter-silent",
+			Label:   i18n.T("tray_silent"),
+			Type:    mygo.MenuItemRadio,
+			Checked: curFilter == "silent",
 			Click: func(*mygo.MenuItem, *mygo.Window) {
-				a.eng.SetFilterMode(engine.FilterSilent)
+				a.setFilter("silent")
 			},
 		},
 		mygo.Separator(),
@@ -187,12 +232,12 @@ func (a *app) ready() {
 	a.player = acoustic.NewPlayer()
 	a.matcher = semantic.NewDefaultMatcher()
 
-	soundAdapter := engine.SoundPlayerFunc(func(s engine.SoundType) {
+	soundAdapter := engine.SpatialSoundPlayerFunc(func(s engine.SoundType, key string) {
+		st := acoustic.SoundThock
 		if s == engine.SoundClick {
-			a.player.PlayClick()
-		} else {
-			a.player.PlayThock()
+			st = acoustic.SoundClick
 		}
+		a.player.PlaySpatial(st, key)
 	})
 
 	a.eng = engine.NewEngine(
@@ -215,7 +260,10 @@ func (a *app) ready() {
 	a.hudVisible = true
 
 	// 1. Setup HUD overlay window with full screen bounds for Cue overlay & mouse tracking
-	d := mygo.Screen.PrimaryDisplay()
+	d, _ := resolveDisplay(mygo.Screen.Displays(), cfg.Appearance.Monitor)
+	if d.Bounds.Width <= 0 || d.Bounds.Height <= 0 {
+		d = mygo.Screen.PrimaryDisplay()
+	}
 	winW := d.Bounds.Width
 	winH := d.Bounds.Height
 	posX := d.Bounds.X
@@ -223,7 +271,7 @@ func (a *app) ready() {
 	if winW <= 0 || winH <= 0 {
 		winW, winH = 1920, 1080
 	}
-	a.vState.SetScale(d.ScaleFactor)
+	a.vState.SetDisplayGeometry(posX, posY, winW, winH, d.ScaleFactor)
 
 	a.hudWindow = mygo.NewWindow(mygo.WindowOptions{
 		Title:         "Cue HUD",
@@ -251,10 +299,13 @@ func (a *app) ready() {
 	// theme, and overlay geometry in sync with every settings change.
 	a.store.OnChange(func(updated config.AppConfig) {
 		a.applyConfig(updated)
+		a.refreshTrayMenu()
 		if a.hudWindow != nil {
 			a.hudWindow.Update(func() {})
 		}
 	})
+	a.store.OnError(a.reportConfigError)
+	a.store.Watch(400 * time.Millisecond)
 
 	// 3. Subscribe HUD view to state engine
 	sub := a.eng.Subscribe()
@@ -281,7 +332,19 @@ func (a *app) ready() {
 		a.tray.OnClick(func() {
 			a.settings.Open()
 		})
+		if msg := a.store.LastError(); msg != "" {
+			a.reportConfigError(fmt.Errorf("%s", msg))
+		}
 	}
+
+	// Keep the overlay on the selected display when monitors are added, removed,
+	// rearranged, or their resolution / DPI changes.
+	mygo.Screen.OnDisplaysChanged(func() {
+		a.applyConfig(a.store.Get())
+		if a.settings != nil {
+			a.settings.Invalidate()
+		}
+	})
 
 	// 4. Start OS Low-Level Hook with Global Toggle Shortcut support
 	a.hk = hook.NewHook()
@@ -301,6 +364,9 @@ func (a *app) ready() {
 
 	// 5. Clean shutdown
 	mygo.App.OnWillQuit(func(*mygo.QuitEvent) {
+		if a.store != nil {
+			a.store.StopWatching()
+		}
 		if a.hk != nil {
 			a.hk.Stop()
 		}
@@ -320,6 +386,8 @@ func filterModeFor(filter string) engine.FilterMode {
 		return engine.FilterAll
 	case "custom":
 		return engine.FilterCustom
+	case "silent":
+		return engine.FilterSilent
 	default:
 		return engine.FilterSmart
 	}
@@ -368,22 +436,25 @@ func (a *app) repositionHUD(cfg config.AppConfig) {
 	if a.hudWindow == nil {
 		return
 	}
-	d := mygo.Screen.PrimaryDisplay()
-	winW := d.Bounds.Width
-	winH := d.Bounds.Height
-	posX := d.Bounds.X
-	posY := d.Bounds.Y
-	if winW <= 0 || winH <= 0 {
-		winW, winH = 1920, 1080
+
+	d, ok := resolveDisplay(mygo.Screen.Displays(), cfg.Appearance.Monitor)
+	if !ok || d.Bounds.Width <= 0 || d.Bounds.Height <= 0 {
+		d = mygo.Screen.PrimaryDisplay()
 	}
-	a.vState.SetScale(d.ScaleFactor)
-	curW, curH := a.hudWindow.Size()
-	curX, curY := a.hudWindow.Position()
-	if curW != winW || curH != winH {
-		a.hudWindow.SetSize(winW, winH)
+
+	bounds := d.Bounds
+	if bounds.Width <= 0 || bounds.Height <= 0 {
+		bounds = mygo.Rectangle{Width: 1920, Height: 1080}
 	}
-	if curX != posX || curY != posY {
-		a.hudWindow.SetPosition(posX, posY)
+
+	// Remember the display-local coordinate space so mouse feedback is drawn
+	// under the real cursor on any monitor, including negative origins.
+	a.vState.SetDisplayGeometry(bounds.X, bounds.Y, bounds.Width, bounds.Height, d.ScaleFactor)
+
+	if a.hudWindow.Bounds() != bounds {
+		// SetBounds moves and resizes in one step, avoiding intermediate states
+		// where a mixed-DPI window is briefly sized for the old monitor.
+		a.hudWindow.SetBounds(bounds)
 	}
 }
 

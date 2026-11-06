@@ -2,6 +2,7 @@ package engine
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"sync"
@@ -56,6 +57,8 @@ type Engine struct {
 	lastChordKey    string
 	lastChordMods   hook.Modifiers
 	chordSeq        uint64
+	recentStrokes   []time.Time // timestamps of recent keystrokes within sliding window
+	currentWPM      int         // instantaneous words per minute
 
 	// Decay cadence loop control
 	stopCh    chan struct{}
@@ -387,7 +390,11 @@ func (e *Engine) DecayCheck(now time.Time) int {
 		mouseRetired = true
 	}
 
-	if removed > 0 || mouseRetired {
+	wpmBefore := e.currentWPM
+	e.decayCadenceLocked(now)
+	wpmDecayed := wpmBefore > 0 && e.currentWPM == 0
+
+	if removed > 0 || mouseRetired || wpmDecayed {
 		e.emitStateLocked()
 	}
 
@@ -434,9 +441,7 @@ func (e *Engine) handleKeyDown(ev hook.InputEvent) {
 	// If key is a modifier alone, track as active held modifier and trigger Thock feedback
 	if isMod {
 		e.heldKeys[normKey] = true
-		if e.soundActive && e.soundPlayer != nil {
-			e.soundPlayer.PlaySound(SoundThock)
-		}
+		e.playAcoustic(SoundThock, normKey)
 		return
 	}
 
@@ -480,9 +485,8 @@ func (e *Engine) handleKeyDown(ev hook.InputEvent) {
 					e.lastChordMods = extractModifiers(last)
 				}
 			}
-			if e.soundActive && e.soundPlayer != nil {
-				e.soundPlayer.PlaySound(SoundClick)
-			}
+			e.recordStrokeLocked(now)
+			e.playAcoustic(SoundClick, "Backspace")
 			e.emitStateLocked()
 			return
 		}
@@ -500,11 +504,11 @@ func (e *Engine) handleKeyDown(ev hook.InputEvent) {
 					lastChord.Timestamp = now
 					lastChord.IsActive = true
 					lastChord.Keys[0].IsHeld = true
+					wpm := e.recordStrokeLocked(now)
+					lastChord.Velocity = velocityForWPM(wpm)
 					e.lastChordKey = lastChord.Keys[0].Label
 					e.lastChordMods = hook.ModNone
-					if e.soundActive && e.soundPlayer != nil {
-						e.soundPlayer.PlaySound(SoundClick)
-					}
+					e.playAcoustic(SoundClick, charStr)
 					e.emitStateLocked()
 					return
 				}
@@ -547,9 +551,8 @@ func (e *Engine) handleKeyDown(ev hook.InputEvent) {
 					e.lastChordMods = extractModifiers(last)
 				}
 			}
-			if e.soundActive && e.soundPlayer != nil {
-				e.soundPlayer.PlaySound(SoundClick)
-			}
+			e.recordStrokeLocked(now)
+			e.playAcoustic(SoundClick, "Backspace")
 			e.emitStateLocked()
 			return
 		}
@@ -560,11 +563,16 @@ func (e *Engine) handleKeyDown(ev hook.InputEvent) {
 
 // pushChordLocked constructs a new DisplayChord or increments streak for repetitive inputs.
 func (e *Engine) pushChordLocked(now time.Time, mods hook.Modifiers, keyName string, isHeld bool) {
+	wpm := e.recordStrokeLocked(now)
+	velocity := velocityForWPM(wpm)
+	isFinisher := isFinisherKey(keyName)
+
 	// Streak check: identical to the most recent chord (same modifiers + same key) within threshold
 	if len(e.chords) > 0 && (!e.wordGrouping || mods != hook.ModNone) && e.lastChordMods == mods && strings.EqualFold(e.lastChordKey, keyName) {
 		lastChord := &e.chords[len(e.chords)-1]
 		if now.Sub(lastChord.Timestamp) <= e.streakThreshold {
 			lastChord.Streak++
+			lastChord.Velocity = velocity
 			duration := e.lingerShort
 			if lastChord.Action.Title != "" {
 				duration = e.lingerLong
@@ -575,9 +583,7 @@ func (e *Engine) pushChordLocked(now time.Time, mods hook.Modifiers, keyName str
 			for i := range lastChord.Keys {
 				lastChord.Keys[i].IsHeld = isHeld
 			}
-			if e.soundActive && e.soundPlayer != nil {
-				e.soundPlayer.PlaySound(SoundClick)
-			}
+			e.playAcoustic(SoundClick, keyName)
 			e.emitStateLocked()
 			return
 		}
@@ -629,14 +635,16 @@ func (e *Engine) pushChordLocked(now time.Time, mods hook.Modifiers, keyName str
 
 	chordID := fmt.Sprintf("chord-%d-%d", now.UnixNano(), atomic.AddUint64(&e.chordSeq, 1))
 	chord := DisplayChord{
-		ID:        chordID,
-		Keys:      keys,
-		Streak:    1,
-		Action:    action,
-		Timestamp: now,
-		ExpiresAt: expiresAt,
-		IsActive:  isHeld,
-		IsPrivate: isPrivate,
+		ID:         chordID,
+		Keys:       keys,
+		Streak:     1,
+		Action:     action,
+		Timestamp:  now,
+		ExpiresAt:  expiresAt,
+		IsActive:   isHeld,
+		IsPrivate:  isPrivate,
+		Velocity:   velocity,
+		IsFinisher: isFinisher,
 	}
 
 	// Append and enforce max limit
@@ -648,10 +656,8 @@ func (e *Engine) pushChordLocked(now time.Time, mods hook.Modifiers, keyName str
 	e.lastChordKey = keyName
 	e.lastChordMods = mods
 
-	// Acoustic feedback: Click for regular key/shortcut
-	if e.soundActive && e.soundPlayer != nil {
-		e.soundPlayer.PlaySound(SoundClick)
-	}
+	// Acoustic feedback: Click for regular key/shortcut with spatial stage placement
+	e.playAcoustic(SoundClick, keyName)
 
 	e.emitStateLocked()
 }
@@ -1123,6 +1129,82 @@ func (e *Engine) snapshot() UIState {
 		SoundActive:  e.soundActive,
 		ThemeName:    e.themeName,
 		WordGrouping: e.wordGrouping,
+		CadenceWPM:   e.currentWPM,
+	}
+}
+
+// CadenceWPM returns current typing velocity in words per minute.
+func (e *Engine) CadenceWPM() int {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return e.currentWPM
+}
+
+// recordStrokeLocked tracks typing timestamps in a sliding window and calculates instantaneous WPM.
+func (e *Engine) recordStrokeLocked(now time.Time) int {
+	cutoff := now.Add(-2500 * time.Millisecond)
+	kept := e.recentStrokes[:0]
+	for _, t := range e.recentStrokes {
+		if t.After(cutoff) {
+			kept = append(kept, t)
+		}
+	}
+	kept = append(kept, now)
+	e.recentStrokes = kept
+
+	n := len(e.recentStrokes)
+	if n < 2 {
+		e.currentWPM = 0
+		return 0
+	}
+	dt := now.Sub(e.recentStrokes[0]).Seconds()
+	if dt < 0.25 {
+		dt = 0.25
+	}
+	wpm := int(math.Round((float64(n) * 12.0) / dt))
+	e.currentWPM = wpm
+	return wpm
+}
+
+func (e *Engine) decayCadenceLocked(now time.Time) {
+	if len(e.recentStrokes) > 0 {
+		cutoff := now.Add(-2500 * time.Millisecond)
+		if e.recentStrokes[len(e.recentStrokes)-1].Before(cutoff) {
+			e.recentStrokes = nil
+			e.currentWPM = 0
+		}
+	}
+}
+
+func velocityForWPM(wpm int) int {
+	if wpm >= 75 {
+		return 2 // Allegro / Supersonic
+	}
+	if wpm >= 35 {
+		return 1 // Andante / Flow
+	}
+	return 0 // Adagio / Contemplation
+}
+
+func isFinisherKey(key string) bool {
+	k := strings.ToLower(strings.TrimSpace(key))
+	switch k {
+	case "enter", "return", "↵", "tab", "⇥", "esc", "escape":
+		return true
+	default:
+		return false
+	}
+}
+
+// playAcoustic dispatches key acoustic feedback with spatial stage awareness.
+func (e *Engine) playAcoustic(s SoundType, key string) {
+	if !e.soundActive || e.soundPlayer == nil {
+		return
+	}
+	if sp, ok := e.soundPlayer.(SpatialSoundPlayer); ok {
+		sp.PlaySpatialSound(s, key)
+	} else {
+		e.soundPlayer.PlaySound(s)
 	}
 }
 

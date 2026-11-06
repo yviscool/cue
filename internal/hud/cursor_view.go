@@ -13,10 +13,14 @@ import (
 )
 
 // mouseBodySvg returns SVG icon data replicating Cue's mouse indicator body,
-// highlighting the clicked button or scroll direction in vibrant neon green (#00FF6A).
-func mouseBodySvg(btn hook.MouseButton, wheel int) *ui.SVG {
-	// Base stroke color: white (#ffffff)
-	// Active highlight color: #00FF6A
+// highlighting the clicked button or scroll direction with dedicated colors:
+// Left Click: Primary theme/custom color (#00FF6A by default)
+// Right Click: High-contrast Sky Blue (#38bdf8)
+// Middle Click: Amber Gold (#facc15)
+func mouseBodySvg(btn hook.MouseButton, wheel int, primaryColorHex string) *ui.SVG {
+	if primaryColorHex == "" {
+		primaryColorHex = "#00FF6A"
+	}
 	leftFill := "none"
 	leftStroke := "white"
 	rightFill := "none"
@@ -28,22 +32,22 @@ func mouseBodySvg(btn hook.MouseButton, wheel int) *ui.SVG {
 
 	switch btn {
 	case hook.ButtonLeft:
-		leftFill = "#00FF6A"
-		leftStroke = "#00FF6A"
+		leftFill = primaryColorHex
+		leftStroke = primaryColorHex
 	case hook.ButtonRight:
-		rightFill = "#00FF6A"
-		rightStroke = "#00FF6A"
+		rightFill = "#38bdf8"
+		rightStroke = "#38bdf8"
 	case hook.ButtonMiddle:
-		wheelStroke = "#00FF6A"
-		wheelFill = "#00FF6A"
+		wheelStroke = "#facc15"
+		wheelFill = "#facc15"
 	}
 
 	if wheel > 0 {
-		wheelStroke = "#00FF6A"
-		upArrow = `<path d="M16.5 17V9M13 12.5L16.5 9L20 12.5" stroke="#00FF6A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>`
+		wheelStroke = primaryColorHex
+		upArrow = fmt.Sprintf(`<path d="M16.5 17V9M13 12.5L16.5 9L20 12.5" stroke="%s" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>`, primaryColorHex)
 	} else if wheel < 0 {
-		wheelStroke = "#00FF6A"
-		downArrow = `<path d="M16.5 9V17M13 13.5L16.5 17L20 13.5" stroke="#00FF6A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>`
+		wheelStroke = primaryColorHex
+		downArrow = fmt.Sprintf(`<path d="M16.5 9V17M13 13.5L16.5 17L20 13.5" stroke="%s" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>`, primaryColorHex)
 	}
 
 	svg := fmt.Sprintf(`<svg width="33" height="43" viewBox="0 0 33 43" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -65,68 +69,139 @@ func mouseBodySvg(btn hook.MouseButton, wheel int) *ui.SVG {
 }
 
 // RenderMouseOverlay renders the complete Cue-replicated mouse visualization at cursor (x, y):
-// 1. Cursor Ring Highlight (animated scale, color, size, keep-highlight)
-// 2. Button & Scroll Indicator (pill badge beside cursor showing mouse silhouette with green active button)
-func RenderMouseOverlay(c *ui.Context, state engine.MouseVisualState, cfg config.AppConfig, t theme.ThemeConfig, scale float64) {
+// 1. Click Ripple FX (tactile contact puck, expanding translucent water ripple, and outer ambient halo)
+//    - Left click: Primary color (default vibrant neon #00FF6A)
+//    - Right click: Secondary high-contrast Ice Blue (#38bdf8)
+//    - Middle click: Amber Gold (#facc15)
+//    - KeepHighlight: Steady cursor spotlight halo when idling
+// 2. Button & Scroll Indicator (pill badge beside cursor showing mouse silhouette with color-coded active lobes)
+func RenderMouseOverlay(c *ui.Context, state engine.MouseVisualState, cfg config.AppConfig, t theme.ThemeConfig, scale float64, originX, originY int) {
 	if scale <= 0 {
 		scale = 1.0
 	}
-	cx := float32(state.X) / float32(scale)
-	cy := float32(state.Y) / float32(scale)
+	cx := float32(state.X-originX) / float32(scale)
+	cy := float32(state.Y-originY) / float32(scale)
 
-	// Don't render if cursor position is 0,0 or negative
+	// Don't render if cursor position is off-screen
 	if cx <= 0 && cy <= 0 {
 		return
 	}
 
 	now := time.Now()
-	isRecentlyClicked := !state.Timestamp.IsZero() && now.Sub(state.Timestamp) < 220*time.Millisecond
-	showClickRing := cfg.Mouse.ShowClicks && (state.Active || isRecentlyClicked)
-	showHighlight := cfg.Mouse.KeepHighlight || showClickRing
+	clickAge := 999 * time.Second
+	if !state.Timestamp.IsZero() {
+		clickAge = now.Sub(state.Timestamp)
+	}
+	isRecentlyClicked := clickAge < 260*time.Millisecond
+	showClickRipple := cfg.Mouse.ShowClicks && (state.Active || isRecentlyClicked)
+	showHighlight := cfg.Mouse.KeepHighlight || showClickRipple
 
-	// 1. Cursor Ring Highlight
+	// Primary and secondary button colors
+	primaryHex := cfg.Mouse.Color
+	if primaryHex == "" {
+		primaryHex = "#00FF6A"
+	}
+	leftColor := ui.Hex(primaryHex)
+	rightColor := ui.Hex("#38bdf8") // Distinctive ice blue for right click
+	middleColor := ui.Hex("#facc15") // Radiant amber gold for middle click
+
+	// Determine active click color based on button pressed
+	clickColor := leftColor
+	switch state.Button {
+	case hook.ButtonRight:
+		clickColor = rightColor
+	case hook.ButtonMiddle:
+		clickColor = middleColor
+	default:
+		clickColor = leftColor
+	}
+
+	// 1. Click Ripple FX & Cursor Ring Highlight
 	if showHighlight {
-		ringSize := float32(cfg.Mouse.Size)
-		if ringSize <= 0 {
-			ringSize = 50
+		baseSize := float32(cfg.Mouse.Size)
+		if baseSize <= 0 {
+			baseSize = 50
 		}
 
-		// Ring color
-		ringHex := cfg.Mouse.Color
-		if ringHex == "" {
-			ringHex = "#00FF6A"
-		}
-		ringColor := ui.Hex(ringHex)
+		if showClickRipple {
+			clickKey := state.Timestamp.UnixMilli()
 
-		// Pulse scale: when clicking or active, shrink slightly (0.75x) for tactile punch
-		renderSize := ringSize
-		borderWidth := ringSize / 18.0
-		if borderWidth < 2.0 {
-			borderWidth = 2.0
-		}
-		if state.Active || isRecentlyClicked {
-			renderSize = ringSize * 0.75
-			borderWidth = borderWidth * 1.2
-		}
+			// Layer 1: Core Contact Puck (Tactile punch right at cursor point)
+			coreSize := baseSize * 0.44
+			ui.Box(c.Key(fmt.Sprintf("mouse-core-%d", clickKey))).
+				Absolute().
+				Left(cx - coreSize/2).
+				Top(cy - coreSize/2).
+				Size(coreSize, coreSize).
+				Radius(coreSize / 2).
+				Background(clickColor.Alpha(0.24)).
+				Border(2.0, clickColor).
+				Shadow(0, 0, 12, 0, clickColor.Alpha(0.65)).
+				Transition(ui.ElementTransition{
+					Animation: &ui.Animation{Spring: ui.SpringOptions{Duration: 200 * time.Millisecond, Bounce: 0.25}},
+					Enter:     &ui.Motion{Scale: 0.40, Opacity: 0.95},
+					Exit:      &ui.Motion{Scale: 0.85, Opacity: 0},
+				})
 
-		ui.Box(c.Key("mouse-cursor-ring")).
-			Absolute().
-			Left(cx-renderSize/2).
-			Top(cy-renderSize/2).
-			Size(renderSize, renderSize).
-			Radius(renderSize/2).
-			Border(borderWidth, ringColor).
-			Shadow(0, 0, 14, 0, ringColor.Alpha(0.55)).
-			Transition(ui.ElementTransition{
-				Duration: 170 * time.Millisecond,
-				Ease:     ui.EaseOut,
-				Enter:    &ui.Motion{Scale: 0.72, Opacity: 0},
-				Exit:     &ui.Motion{Scale: 1.35, Opacity: 0},
-			})
+			// Layer 2: Expanding Primary Water Ripple (Radiates outward and fades)
+			rippleSize := baseSize * 1.55
+			ui.Box(c.Key(fmt.Sprintf("mouse-ripple-%d", clickKey))).
+				Absolute().
+				Left(cx - rippleSize/2).
+				Top(cy - rippleSize/2).
+				Size(rippleSize, rippleSize).
+				Radius(rippleSize / 2).
+				Border(2.2, clickColor.Alpha(0.85)).
+				Shadow(0, 0, 16, 0, clickColor.Alpha(0.40)).
+				Transition(ui.ElementTransition{
+					Duration: 280 * time.Millisecond,
+					Ease:     ui.EaseOut,
+					Enter:    &ui.Motion{Scale: 0.35, Opacity: 0.85},
+					Exit:     &ui.Motion{Scale: 1.65, Opacity: 0},
+				})
+
+			// Layer 3: Secondary Ambient Water Halo (Soft outer expansion wave)
+			haloSize := baseSize * 2.15
+			ui.Box(c.Key(fmt.Sprintf("mouse-halo-%d", clickKey))).
+				Absolute().
+				Left(cx - haloSize/2).
+				Top(cy - haloSize/2).
+				Size(haloSize, haloSize).
+				Radius(haloSize / 2).
+				Border(1.4, clickColor.Alpha(0.45)).
+				Shadow(0, 0, 22, 0, clickColor.Alpha(0.25)).
+				Transition(ui.ElementTransition{
+					Duration: 340 * time.Millisecond,
+					Ease:     ui.EaseOut,
+					Enter:    &ui.Motion{Scale: 0.45, Opacity: 0.50},
+					Exit:     &ui.Motion{Scale: 2.10, Opacity: 0},
+				})
+		} else if cfg.Mouse.KeepHighlight {
+			// Steady idle cursor spotlight ring when KeepHighlight is on
+			steadySize := baseSize
+			borderWidth := baseSize / 18.0
+			if borderWidth < 2.0 {
+				borderWidth = 2.0
+			}
+			ui.Box(c.Key("mouse-cursor-steady-ring")).
+				Absolute().
+				Left(cx - steadySize/2).
+				Top(cy - steadySize/2).
+				Size(steadySize, steadySize).
+				Radius(steadySize / 2).
+				Border(borderWidth, leftColor.Alpha(0.70)).
+				Shadow(0, 0, 12, 0, leftColor.Alpha(0.35)).
+				Transition(ui.ElementTransition{
+					Duration: 180 * time.Millisecond,
+					Ease:     ui.EaseOut,
+					Enter:    &ui.Motion{Scale: 0.75, Opacity: 0},
+					Exit:     &ui.Motion{Scale: 1.25, Opacity: 0},
+				})
+		}
 	}
 
 	// 2. Button & Scroll Indicator (Cue mouse silhouette)
-	isRecentlyActiveIndicator := !state.Timestamp.IsZero() && now.Sub(state.Timestamp) < 260*time.Millisecond
+	isRecentlyActiveIndicator := clickAge < 260*time.Millisecond
 	showIndicator := cfg.Mouse.KeepIndicator || (cfg.Mouse.ShowIndicator && (state.Active || state.Wheel != 0 || isRecentlyActiveIndicator))
 
 	if showIndicator {
@@ -145,10 +220,10 @@ func RenderMouseOverlay(c *ui.Context, state engine.MouseVisualState, cfg config
 
 		ui.Box(c.Key("mouse-btn-indicator")).
 			Absolute().
-			Left(cx+ox).
-			Top(cy+oy).
-			Width(w+14).
-			Height(h+14).
+			Left(cx + ox).
+			Top(cy + oy).
+			Width(w + 14).
+			Height(h + 14).
 			Background(ui.RGBA(12, 12, 16, 0.78)).
 			Radius(10).
 			Border(1, ui.RGBA(255, 255, 255, 0.16)).
@@ -169,7 +244,7 @@ func RenderMouseOverlay(c *ui.Context, state engine.MouseVisualState, cfg config
 				if !isRecentlyActiveIndicator {
 					wheel = 0
 				}
-				ui.Icon(c, mouseBodySvg(btn, wheel)).
+				ui.Icon(c, mouseBodySvg(btn, wheel, primaryHex)).
 					Size(w, h).
 					TextColor(ui.Hex("#ffffff"))
 			})

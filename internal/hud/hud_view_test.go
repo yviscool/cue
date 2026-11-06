@@ -54,3 +54,19 @@ func TestSlideVectorFollowsScreenAnchor(t *testing.T) {
 		}
 	}
 }
+
+func TestViewStateDisplayGeometry(t *testing.T) {
+	v := NewViewState()
+
+	// Initial default scale
+	if got := v.GetScale(); got != 1.0 {
+		t.Errorf("expected default scale 1.0, got %f", got)
+	}
+
+	// Multi-monitor geometry with negative origin
+	v.SetDisplayGeometry(-1920, 0, 1920, 1080, 1.5)
+	ox, oy, w, h, s := v.DisplayGeometry()
+	if ox != -1920 || oy != 0 || w != 1920 || h != 1080 || s != 1.5 {
+		t.Errorf("DisplayGeometry mismatch: got (%d, %d, %d, %d, %f)", ox, oy, w, h, s)
+	}
+}

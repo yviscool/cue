@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestDefaultConfigCompleteness(t *testing.T) {
@@ -147,5 +148,92 @@ func TestStorePersistence(t *testing.T) {
 	got := reloaded.Get()
 	if got.General.MaxHistory != 8 || got.Appearance.Alignment != AlignTopRight || got.Color.Color != "#00B1D2" {
 		t.Errorf("reloaded config mismatch: %+v", got)
+	}
+}
+
+func TestStoreHotReload(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "cue_cfg_reload")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	filePath := filepath.Join(tmpDir, "hot_reload.json")
+	store, err := NewStore(filePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	notifyCh := make(chan struct{}, 1)
+	store.OnChange(func(c AppConfig) {
+		if c.General.Filter == "silent" {
+			select {
+			case notifyCh <- struct{}{}:
+			default:
+			}
+		}
+	})
+
+	// External write simulating manual edit of config.json
+	cfg := store.Get()
+	cfg.General.Filter = "silent"
+	data, _ := json.MarshalIndent(cfg, "", "  ")
+	if err := os.WriteFile(filePath, data, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.Reload(); err != nil {
+		t.Fatalf("reload failed: %v", err)
+	}
+	select {
+	case <-notifyCh:
+	case <-time.After(500 * time.Millisecond):
+		t.Errorf("timeout waiting for OnChange callback on hot reload")
+	}
+	if got := store.Get().General.Filter; got != "silent" {
+		t.Errorf("expected filter silent, got %s", got)
+	}
+}
+
+func TestStoreInvalidJsonPreservesConfig(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "cue_cfg_bad")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	filePath := filepath.Join(tmpDir, "corrupt.json")
+	store, err := NewStore(filePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	orig := store.Get()
+
+	errCh := make(chan error, 1)
+	store.OnError(func(err error) {
+		select {
+		case errCh <- err:
+		default:
+		}
+	})
+
+	// External corrupt write (syntax error)
+	if err := os.WriteFile(filePath, []byte(`{ "general": { "filter": `), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	err = store.Reload()
+	if err == nil {
+		t.Errorf("expected error on corrupt JSON")
+	}
+	select {
+	case <-errCh:
+	case <-time.After(500 * time.Millisecond):
+		t.Errorf("timeout waiting for OnError callback to fire")
+	}
+	// Active config in memory must remain completely intact
+	if store.Get().General.Filter != orig.General.Filter {
+		t.Errorf("corrupt reload corrupted in-memory config: %+v", store.Get())
 	}
 }

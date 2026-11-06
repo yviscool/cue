@@ -227,7 +227,7 @@ func NewSettingsController(store *config.Store, eng *engine.Engine, vState *View
 	if logo == nil {
 		logo, _ = assets.GetAppIconSource()
 	}
-	return &SettingsController{
+	sc := &SettingsController{
 		store:        store,
 		engine:       eng,
 		vState:       vState,
@@ -236,12 +236,23 @@ func NewSettingsController(store *config.Store, eng *engine.Engine, vState *View
 		marginLinked: true,
 		filterTab:    "Keyboard",
 	}
+	if store != nil {
+		store.OnChange(func(config.AppConfig) {
+			sc.Invalidate()
+		})
+	}
+	return sc
 }
 
 // updateConfig updates configuration in store and automatically invalidates window.
 func (sc *SettingsController) updateConfig(fn func(*config.AppConfig)) {
 	err := sc.store.Update(fn)
 	_ = err
+	sc.Invalidate()
+}
+
+// Invalidate repaints the settings window when it is open.
+func (sc *SettingsController) Invalidate() {
 	if sc.window != nil {
 		sc.window.Invalidate()
 	}
@@ -630,12 +641,6 @@ func (sc *SettingsController) renderGeneralTab(
 					ac.Border.Color = ""
 					ac.Border.Radius = 0
 				})
-				if sc.vState != nil {
-					sc.vState.SetTheme(th)
-				}
-				if sc.engine != nil {
-					sc.engine.SetThemeName(th.Name)
-				}
 				if sc.window != nil {
 					sc.window.Invalidate()
 				}
@@ -672,8 +677,13 @@ func (sc *SettingsController) renderGeneralTab(
 	// Group 3: Filter Policy & Custom Filter Matrix
 	group(i18n.T("filter_title"), func() {
 		row(i18n.T("filter_title"), i18n.T("filter_desc"), func() {
-			modes := []string{"none", "modifiers", "custom"}
-			labels := []string{i18n.T("filter_none"), i18n.T("filter_modifiers"), i18n.T("filter_custom")}
+			modes := []string{"none", "modifiers", "custom", "silent"}
+			labels := []string{
+				i18n.T("filter_none"),
+				i18n.T("filter_modifiers"),
+				i18n.T("filter_custom"),
+				i18n.T("filter_silent"),
+			}
 			selIdx := 1
 			for i, m := range modes {
 				if m == cfg.General.Filter {
@@ -683,17 +693,6 @@ func (sc *SettingsController) renderGeneralTab(
 			if ui.Segmented(c.Key("filter-mode"), &selIdx, labels...).Changed() {
 				target := modes[selIdx]
 				sc.updateConfig(func(ac *config.AppConfig) { ac.General.Filter = target })
-				if sc.engine != nil {
-					switch target {
-					case "none":
-						sc.engine.SetFilterMode(engine.FilterAll)
-					case "custom":
-						sc.engine.SetFilterMode(engine.FilterCustom)
-						sc.engine.SetAllowedKeys(cfg.General.AllowedKeys)
-					default:
-						sc.engine.SetFilterMode(engine.FilterSmart)
-					}
-				}
 			}
 		})
 
@@ -727,9 +726,6 @@ func (sc *SettingsController) renderGeneralTab(
 			on := cfg.General.WordGrouping
 			if ui.Switch(c.Key("toggle-word-grouping"), &on).Changed() {
 				sc.updateConfig(func(ac *config.AppConfig) { ac.General.WordGrouping = on })
-				if sc.engine != nil {
-					sc.engine.SetWordGrouping(on)
-				}
 			}
 		})
 
@@ -780,9 +776,6 @@ func (sc *SettingsController) renderGeneralTab(
 			on := cfg.TactileAudio
 			if ui.Switch(c.Key("toggle-tactile-audio"), &on).Changed() {
 				sc.updateConfig(func(ac *config.AppConfig) { ac.TactileAudio = on })
-				if sc.engine != nil {
-					sc.engine.SetSoundActive(on)
-				}
 			}
 		})
 	})
@@ -1761,9 +1754,6 @@ func (sc *SettingsController) toggleAllowedKey(key string) {
 		} else {
 			ac.General.AllowedKeys = append(ac.General.AllowedKeys, key)
 		}
-		if sc.engine != nil {
-			sc.engine.SetAllowedKeys(ac.General.AllowedKeys)
-		}
 	})
 	if sc.window != nil {
 		sc.window.Invalidate()
@@ -1870,33 +1860,21 @@ func (sc *SettingsController) renderCustomFilterModal(c *ui.Context, cfg config.
 								allCommon = append(allCommon, "Enter", "Space", "Backspace", "Tab", "Esc", "Insert", "Delete", "Home", "End", "PageUp", "PageDown", "Up", "Down", "Left", "Right", "Left Click", "Right Click", "Middle Click", "Drag", "Scroll Up", "Scroll Down")
 								sc.updateConfig(func(ac *config.AppConfig) {
 									ac.General.AllowedKeys = allCommon
-									if sc.engine != nil {
-										sc.engine.SetAllowedKeys(ac.General.AllowedKeys)
-									}
 								})
 							}
 							if ui.Button(c.Key("filter-clear-btn"), "清空").Padding(4, 9).Radius(6).Background(p.sidebar).TextColor(p.text).FontSize(11).Clicked() {
 								sc.updateConfig(func(ac *config.AppConfig) {
 									ac.General.AllowedKeys = []string{}
-									if sc.engine != nil {
-										sc.engine.SetAllowedKeys(ac.General.AllowedKeys)
-									}
 								})
 							}
 							if ui.Button(c.Key("filter-mods-btn"), "仅修饰键").Padding(4, 9).Radius(6).Background(p.sidebar).TextColor(p.text).FontSize(11).Clicked() {
 								sc.updateConfig(func(ac *config.AppConfig) {
 									ac.General.AllowedKeys = allMods
-									if sc.engine != nil {
-										sc.engine.SetAllowedKeys(ac.General.AllowedKeys)
-									}
 								})
 							}
 							if ui.Button(c.Key("filter-alpha-btn"), "字母与数字").Padding(4, 9).Radius(6).Background(p.sidebar).TextColor(p.text).FontSize(11).Clicked() {
 								sc.updateConfig(func(ac *config.AppConfig) {
 									ac.General.AllowedKeys = allAlpha
-									if sc.engine != nil {
-										sc.engine.SetAllowedKeys(ac.General.AllowedKeys)
-									}
 								})
 							}
 						})

@@ -45,14 +45,16 @@ type KeyCap struct {
 
 // DisplayChord represents an active or lingering visualized key cluster.
 type DisplayChord struct {
-	ID        string              // Unique ID for animation tracking
-	Keys      []KeyCap            // e.g. [Ctrl, Shift, P]
-	Streak    int                 // Repeat count (e.g. ×3), 1 if single press
-	Action    semantic.ActionInfo // Semantic subtitle if matched
-	Timestamp time.Time           // When this chord was first triggered
-	ExpiresAt time.Time           // When this chord will fade out
-	IsActive  bool                // True while keys are still physically held down
-	IsPrivate bool                // True if masked by privacy shield
+	ID         string              // Unique ID for animation tracking
+	Keys       []KeyCap            // e.g. [Ctrl, Shift, P]
+	Streak     int                 // Repeat count (e.g. ×3), 1 if single press
+	Action     semantic.ActionInfo // Semantic subtitle if matched
+	Timestamp  time.Time           // When this chord was first triggered
+	ExpiresAt  time.Time           // When this chord will fade out
+	IsActive   bool                // True while keys are still physically held down
+	IsPrivate  bool                // True if masked by privacy shield
+	Velocity   int                 // Cadence velocity: 0: Adagio (<35 WPM), 1: Andante (35-75 WPM), 2: Allegro (>75 WPM)
+	IsFinisher bool                // True if this chord is a sequence terminator (Enter, Tab, etc.)
 }
 
 // MouseVisualState represents a mouse action visualization.
@@ -75,6 +77,7 @@ type UIState struct {
 	SoundActive  bool             // True if micro-acoustic feedback is enabled
 	ThemeName    string           // Current active theme name
 	WordGrouping bool             // True if word grouping is active
+	CadenceWPM   int              // Current typing velocity in words per minute
 }
 
 // SoundType designates the audio profile to trigger.
@@ -90,9 +93,26 @@ type SoundPlayer interface {
 	PlaySound(s SoundType)
 }
 
+// SpatialSoundPlayer extends SoundPlayer with key-aware spatial acoustic stage placement.
+type SpatialSoundPlayer interface {
+	SoundPlayer
+	PlaySpatialSound(s SoundType, key string)
+}
+
 // SoundPlayerFunc adapter allows simple closures to act as SoundPlayer.
 type SoundPlayerFunc func(s SoundType)
 
 func (f SoundPlayerFunc) PlaySound(s SoundType) {
 	f(s)
+}
+
+// SpatialSoundPlayerFunc adapter allows simple closures to act as SpatialSoundPlayer.
+type SpatialSoundPlayerFunc func(s SoundType, key string)
+
+func (f SpatialSoundPlayerFunc) PlaySound(s SoundType) {
+	f(s, "")
+}
+
+func (f SpatialSoundPlayerFunc) PlaySpatialSound(s SoundType, key string) {
+	f(s, key)
 }

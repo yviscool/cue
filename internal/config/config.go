@@ -1,11 +1,14 @@
 package config
 
 import (
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 )
 
 // Alignment defines the 9-grid screen anchoring position.
@@ -25,7 +28,7 @@ const (
 
 // AppearanceSettings controls HUD window placement, animations, and monitor targets.
 type AppearanceSettings struct {
-	Monitor           string    `json:"monitor"`
+	Monitor           string    `json:"monitor"`           // "" / "primary" = primary display, otherwise display ID or label
 	FlexDirection     string    `json:"flexDirection"`     // "row" | "column"
 	Alignment         Alignment `json:"alignment"`         // default "bottom-center"
 	MarginX           int       `json:"marginX"`           // default 100
@@ -97,7 +100,7 @@ type MouseSettings struct {
 
 // GeneralSettings mirrors Cue General tab settings.
 type GeneralSettings struct {
-	Filter           string   `json:"filter"`           // "none" | "modifiers" | "custom"
+	Filter           string   `json:"filter"`           // "none" | "modifiers" | "custom" | "silent"
 	AllowedKeys      []string `json:"allowedKeys"`      // custom allowed raw keys
 	ShowEventHistory bool     `json:"showEventHistory"` // default false
 	MaxHistory       int      `json:"maxHistory"`       // default 5 (2 to 12)
@@ -213,12 +216,22 @@ func DefaultConfig() AppConfig {
 	}
 }
 
-// Store manages thread-safe configuration file persistence.
+// Store manages thread-safe configuration file persistence and change watching.
 type Store struct {
-	mu        sync.RWMutex
-	filePath  string
-	cfg       AppConfig
-	listeners []func(AppConfig)
+	mu             sync.RWMutex
+	filePath       string
+	cfg            AppConfig
+	listeners      []func(AppConfig)
+	errorListeners []func(error)
+	lastHash       [sha256.Size]byte
+	hasHash        bool
+	badHash        [sha256.Size]byte
+	hasBadHash     bool
+	lastError      string
+	watchStop      chan struct{}
+	watchDone      chan struct{}
+	watchOnce      sync.Once
+	stopOnce       sync.Once
 }
 
 // OnChange registers a callback that is invoked whenever configuration updates.
@@ -228,12 +241,42 @@ func (s *Store) OnChange(fn func(AppConfig)) {
 	s.listeners = append(s.listeners, fn)
 }
 
+// OnError registers a callback for external edits that cannot be loaded. The
+// active configuration is kept intact when this fires.
+func (s *Store) OnError(fn func(error)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.errorListeners = append(s.errorListeners, fn)
+}
+
 func (s *Store) notifyListenersLocked() {
 	c := s.cfg
 	for _, fn := range s.listeners {
 		cb := fn
 		go cb(c)
 	}
+}
+
+func (s *Store) notifyErrorLocked(err error) {
+	for _, fn := range s.errorListeners {
+		cb := fn
+		go cb(err)
+	}
+}
+
+// Path returns the configuration file path.
+func (s *Store) Path() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.filePath
+}
+
+// LastError returns the most recent external reload error, or "" when the file
+// is healthy. The error clears automatically after a successful reload.
+func (s *Store) LastError() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.lastError
 }
 
 // NewStore initializes or loads config from the specified path.
@@ -251,32 +294,162 @@ func NewStore(filePath string) (*Store, error) {
 	}
 
 	if err := s.load(); err != nil {
-		_ = s.Save() // persist defaults if file didn't exist
+		if os.IsNotExist(err) {
+			_ = s.Save() // persist defaults only when no file exists yet
+		} else {
+			// Never overwrite a corrupt user file on startup. Keep defaults in
+			// memory and surface the error so the watcher can recover when the
+			// user fixes the JSON.
+			s.reportError(err, nil)
+		}
 	}
 	return s, nil
 }
 
 func (s *Store) load() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	data, err := os.ReadFile(s.filePath)
 	if err != nil {
 		return err
 	}
+
 	var loaded AppConfig
 	if err := json.Unmarshal(data, &loaded); err != nil {
+		return fmt.Errorf("parse config: %w", err)
+	}
+
+	migrated := migrateLegacyConfig(&loaded)
+	sum := sha256.Sum256(data)
+
+	s.mu.Lock()
+	s.cfg = loaded
+	s.lastHash = sum
+	s.hasHash = true
+	s.lastError = ""
+	s.hasBadHash = false
+	s.mu.Unlock()
+
+	if migrated {
+		if out, err := json.MarshalIndent(loaded, "", "  "); err == nil {
+			if err := writeFileAtomic(s.filePath, out); err == nil {
+				s.noteSaved(out)
+			}
+		}
+	}
+	return nil
+}
+
+// Reload re-reads the configuration file. It returns nil without notifying when
+// the file content has not changed. Invalid JSON leaves the active config
+// untouched and reports through OnError.
+func (s *Store) Reload() error {
+	data, err := os.ReadFile(s.filePath)
+	if err != nil {
+		s.reportError(err, nil)
 		return err
 	}
-	if migrateLegacyConfig(&loaded) {
-		s.cfg = loaded
-		if migrated, err := json.MarshalIndent(s.cfg, "", "  "); err == nil {
-			_ = os.WriteFile(s.filePath, migrated, 0644)
-		}
+	sum := sha256.Sum256(data)
+
+	s.mu.RLock()
+	unchanged := s.hasHash && sum == s.lastHash
+	s.mu.RUnlock()
+	if unchanged {
 		return nil
 	}
+
+	var loaded AppConfig
+	if err := json.Unmarshal(data, &loaded); err != nil {
+		parseErr := fmt.Errorf("parse config: %w", err)
+		s.reportError(parseErr, &sum)
+		return parseErr
+	}
+
+	migrated := migrateLegacyConfig(&loaded)
+	s.mu.Lock()
 	s.cfg = loaded
+	s.lastHash = sum
+	s.hasHash = true
+	s.lastError = ""
+	s.hasBadHash = false
+	s.notifyListenersLocked()
+	s.mu.Unlock()
+
+	if migrated {
+		if out, err := json.MarshalIndent(loaded, "", "  "); err == nil {
+			if err := writeFileAtomic(s.filePath, out); err == nil {
+				s.noteSaved(out)
+			}
+		}
+	}
 	return nil
+}
+
+// Watch polls the configuration file so manual edits are applied without a
+// restart. The interval is clamped to a value that keeps the worst-case
+// detection latency comfortably below one second.
+func (s *Store) Watch(interval time.Duration) {
+	if interval <= 0 || interval > 500*time.Millisecond {
+		interval = 400 * time.Millisecond
+	}
+	s.watchOnce.Do(func() {
+		stop := make(chan struct{})
+		done := make(chan struct{})
+		s.mu.Lock()
+		s.watchStop = stop
+		s.watchDone = done
+		s.mu.Unlock()
+
+		go func() {
+			defer close(done)
+			ticker := time.NewTicker(interval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-stop:
+					return
+				case <-ticker.C:
+					_ = s.Reload()
+				}
+			}
+		}()
+	})
+}
+
+// StopWatching stops the polling goroutine.
+func (s *Store) StopWatching() {
+	s.mu.RLock()
+	stop := s.watchStop
+	done := s.watchDone
+	s.mu.RUnlock()
+	if stop == nil || done == nil {
+		return
+	}
+	s.stopOnce.Do(func() { close(stop) })
+	<-done
+}
+
+func (s *Store) reportError(err error, badHash *[sha256.Size]byte) {
+	s.mu.Lock()
+	if badHash != nil {
+		if s.hasBadHash && *badHash == s.badHash {
+			s.mu.Unlock()
+			return
+		}
+		s.badHash = *badHash
+		s.hasBadHash = true
+	}
+	s.lastError = err.Error()
+	s.notifyErrorLocked(err)
+	s.mu.Unlock()
+}
+
+func (s *Store) noteSaved(data []byte) {
+	sum := sha256.Sum256(data)
+	s.mu.Lock()
+	s.lastHash = sum
+	s.hasHash = true
+	s.lastError = ""
+	s.hasBadHash = false
+	s.mu.Unlock()
 }
 
 // migrateLegacyConfig upgrades configuration written before version 2. Those
@@ -334,29 +507,74 @@ func (s *Store) Get() AppConfig {
 	return s.cfg
 }
 
-// Update modifies configuration with a callback and saves to disk.
+// Update modifies configuration with a callback and saves to disk. The
+// in-memory configuration is only replaced after the write succeeds, so a
+// failed save cannot leave the UI and disk out of sync.
 func (s *Store) Update(fn func(*AppConfig)) error {
 	s.mu.Lock()
-	fn(&s.cfg)
+	next := s.cfg
+	fn(&next)
+	data, err := json.MarshalIndent(next, "", "  ")
+	if err != nil {
+		s.mu.Unlock()
+		return err
+	}
+	path := s.filePath
+	if err := writeFileAtomic(path, data); err != nil {
+		s.mu.Unlock()
+		return err
+	}
+	s.cfg = next
+	s.lastHash = sha256.Sum256(data)
+	s.hasHash = true
+	s.lastError = ""
+	s.hasBadHash = false
+	s.notifyListenersLocked()
+	s.mu.Unlock()
+	return nil
+}
+
+// Save writes current config to disk.
+func (s *Store) Save() error {
+	s.mu.Lock()
 	data, err := json.MarshalIndent(s.cfg, "", "  ")
 	if err != nil {
 		s.mu.Unlock()
 		return err
 	}
 	path := s.filePath
-	s.notifyListenersLocked()
+	if err := writeFileAtomic(path, data); err != nil {
+		s.mu.Unlock()
+		return err
+	}
+	s.lastHash = sha256.Sum256(data)
+	s.hasHash = true
 	s.mu.Unlock()
-	return os.WriteFile(path, data, 0644)
+	return nil
 }
 
-// Save writes current config to disk.
-func (s *Store) Save() error {
-	s.mu.RLock()
-	data, err := json.MarshalIndent(s.cfg, "", "  ")
-	path := s.filePath
-	s.mu.RUnlock()
+// writeFileAtomic writes through a temporary file so the watcher can never read
+// a half-written configuration.
+func writeFileAtomic(path string, data []byte) error {
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, ".cue-config-*.tmp")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0644)
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	_ = os.Chmod(tmpName, 0644)
+	return os.Rename(tmpName, path)
 }

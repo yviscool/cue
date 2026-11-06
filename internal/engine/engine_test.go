@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -1102,5 +1103,89 @@ func TestWordGrouping_SetWordGroupingToggle(t *testing.T) {
 	chords := eng.Chords()
 	if len(chords) != 1 || chords[0].Keys[0].Label != "ab" {
 		t.Fatalf("expected 1 word chord 'ab', got %+v", chords)
+	}
+}
+
+func TestSpatialSoundPlayerDispatch(t *testing.T) {
+	var playedKeys []string
+	var playedTypes []SoundType
+
+	spatialMock := SpatialSoundPlayerFunc(func(s SoundType, key string) {
+		playedTypes = append(playedTypes, s)
+		playedKeys = append(playedKeys, key)
+	})
+
+	eng := NewEngine(
+		WithFilterMode(FilterAll),
+		WithSoundPlayer(spatialMock),
+		WithSoundActive(true),
+	)
+
+	// Modifier key should trigger Thock with key name
+	eng.HandleEvent(hook.InputEvent{Type: hook.EventKeyDown, KeyName: "Ctrl", IsModifier: true})
+	// Alphanumeric key should trigger Click with key name
+	eng.HandleEvent(hook.InputEvent{Type: hook.EventKeyDown, KeyName: "Enter"})
+
+	if len(playedKeys) != 2 {
+		t.Fatalf("expected 2 sound events, got %d", len(playedKeys))
+	}
+	if playedTypes[0] != SoundThock || playedKeys[0] != "ctrl" {
+		t.Errorf("first sound mismatch: got (%v, %q), want (Thock, 'ctrl')", playedTypes[0], playedKeys[0])
+	}
+	if playedTypes[1] != SoundClick || playedKeys[1] != "Enter" {
+		t.Errorf("second sound mismatch: got (%v, %q), want (Click, 'Enter')", playedTypes[1], playedKeys[1])
+	}
+}
+
+func TestCadenceVelocityAndFinisher(t *testing.T) {
+	eng := NewEngine(
+		WithFilterMode(FilterAll),
+	)
+
+	now := time.Now()
+
+	// 1. Single slow keypress -> Velocity 0 (Adagio)
+	eng.HandleEvent(hook.InputEvent{
+		Type:      hook.EventKeyDown,
+		KeyName:   "A",
+		Timestamp: now,
+	})
+	chords := eng.Chords()
+	if len(chords) != 1 {
+		t.Fatalf("expected 1 chord, got %d", len(chords))
+	}
+	if chords[0].Velocity != 0 {
+		t.Errorf("single press should be Velocity 0 (Adagio), got %d", chords[0].Velocity)
+	}
+	if chords[0].IsFinisher {
+		t.Errorf("'A' should not be marked as finisher")
+	}
+
+	// 2. High-speed burst -> Velocity 2 (Allegro, >75 WPM)
+	// 10 keystrokes in 0.5s = (10 * 12) / 0.5 = 240 WPM
+	burstTime := now.Add(1 * time.Second)
+	for i := 0; i < 10; i++ {
+		eng.HandleEvent(hook.InputEvent{
+			Type:      hook.EventKeyDown,
+			KeyName:   fmt.Sprintf("k%d", i),
+			Timestamp: burstTime.Add(time.Duration(i*40) * time.Millisecond),
+		})
+	}
+	chords = eng.Chords()
+	last := chords[len(chords)-1]
+	if last.Velocity != 2 {
+		t.Errorf("high cadence burst should be Velocity 2 (Allegro), got %d (wpm=%d)", last.Velocity, eng.CadenceWPM())
+	}
+
+	// 3. Finisher key -> Enter
+	eng.HandleEvent(hook.InputEvent{
+		Type:      hook.EventKeyDown,
+		KeyName:   "Enter",
+		Timestamp: burstTime.Add(500 * time.Millisecond),
+	})
+	chords = eng.Chords()
+	finisher := chords[len(chords)-1]
+	if !finisher.IsFinisher {
+		t.Errorf("Enter chord should have IsFinisher=true")
 	}
 }

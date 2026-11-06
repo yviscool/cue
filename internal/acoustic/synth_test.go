@@ -228,3 +228,118 @@ func TestConcurrentPlaybackSafety(t *testing.T) {
 	wg.Wait()
 	p.Stop()
 }
+
+func TestStereoWAVHeaderValidation(t *testing.T) {
+	wav := acoustic.SynthesizeStereoWAV(acoustic.SoundClick, -0.65, 1.0)
+	if len(wav) < 44 {
+		t.Fatalf("Stereo WAV buffer too small: %d bytes", len(wav))
+	}
+
+	if string(wav[0:4]) != "RIFF" {
+		t.Errorf("expected 'RIFF' chunk ID, got %q", string(wav[0:4]))
+	}
+
+	chunkSize := binary.LittleEndian.Uint32(wav[4:8])
+	if int(chunkSize)+8 != len(wav) {
+		t.Errorf("chunk size mismatch: header says %d (+8 = %d), actual %d",
+			chunkSize, chunkSize+8, len(wav))
+	}
+
+	if string(wav[8:12]) != "WAVE" {
+		t.Errorf("expected 'WAVE' format, got %q", string(wav[8:12]))
+	}
+
+	numChannels := binary.LittleEndian.Uint16(wav[22:24])
+	if numChannels != 2 {
+		t.Errorf("expected 2 channels (Stereo), got %d", numChannels)
+	}
+
+	blockAlign := binary.LittleEndian.Uint16(wav[32:34])
+	if blockAlign != 4 {
+		t.Errorf("expected blockAlign 4, got %d", blockAlign)
+	}
+
+	byteRate := binary.LittleEndian.Uint32(wav[28:32])
+	expectedByteRate := uint32(acoustic.SampleRate * 2 * 2)
+	if byteRate != expectedByteRate {
+		t.Errorf("expected byte rate %d, got %d", expectedByteRate, byteRate)
+	}
+}
+
+func TestEqualPowerPanningBalance(t *testing.T) {
+	// Synthesize with Far Left (-0.65)
+	leftWav := acoustic.SynthesizeStereoWAV(acoustic.SoundClick, -0.65, 1.0)
+	// Synthesize with Far Right (+0.65)
+	rightWav := acoustic.SynthesizeStereoWAV(acoustic.SoundClick, 0.65, 1.0)
+
+	// In leftWav, Left channel RMS should be significantly louder than Right channel
+	// Sample offset 44, interleaved L0, R0, L1, R1...
+	var sumLeftSq, sumRightSq float64
+	sampleCount := (len(leftWav) - 44) / 4
+
+	for i := 0; i < sampleCount; i++ {
+		offset := 44 + i*4
+		l := int16(binary.LittleEndian.Uint16(leftWav[offset : offset+2]))
+		r := int16(binary.LittleEndian.Uint16(leftWav[offset+2 : offset+4]))
+		sumLeftSq += float64(l) * float64(l)
+		sumRightSq += float64(r) * float64(r)
+	}
+
+	if sumLeftSq <= sumRightSq*2.0 {
+		t.Errorf("Left channel should have greater power than right for pan -0.65: left=%.0f, right=%.0f", sumLeftSq, sumRightSq)
+	}
+
+	// For rightWav: right channel RMS should be significantly louder than left
+	var rSumLeftSq, rSumRightSq float64
+	for i := 0; i < sampleCount; i++ {
+		offset := 44 + i*4
+		l := int16(binary.LittleEndian.Uint16(rightWav[offset : offset+2]))
+		r := int16(binary.LittleEndian.Uint16(rightWav[offset+2 : offset+4]))
+		rSumLeftSq += float64(l) * float64(l)
+		rSumRightSq += float64(r) * float64(r)
+	}
+
+	if rSumRightSq <= rSumLeftSq*2.0 {
+		t.Errorf("Right channel should have greater power than left for pan +0.65: left=%.0f, right=%.0f", rSumLeftSq, rSumRightSq)
+	}
+}
+
+func TestKeyToPanMapping(t *testing.T) {
+	cases := []struct {
+		key      string
+		expected float64
+	}{
+		{"Tab", -0.65},
+		{"Caps", -0.65},
+		{"A", -0.65},
+		{"Q", -0.65},
+		{"W", -0.30},
+		{"E", -0.30},
+		{"Space", 0.0},
+		{"G", 0.0},
+		{"H", 0.0},
+		{"J", 0.30},
+		{"L", 0.30},
+		{"P", 0.65},
+		{"Enter", 0.65},
+		{"Backspace", 0.65},
+	}
+
+	for _, c := range cases {
+		pan := acoustic.KeyToPan(c.key)
+		if pan != c.expected {
+			t.Errorf("KeyToPan(%q) = %f, expected %f", c.key, pan, c.expected)
+		}
+	}
+}
+
+func TestPlaySpatialSafety(t *testing.T) {
+	p := acoustic.NewPlayer()
+	keys := []string{"Tab", "A", "E", "Space", "L", "Enter"}
+
+	for _, k := range keys {
+		p.PlaySpatial(acoustic.SoundClick, k)
+		p.PlaySpatial(acoustic.SoundThock, k)
+	}
+	p.Stop()
+}
