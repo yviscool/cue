@@ -1,0 +1,44 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  publish-release:
+    name: Build & Publish Release
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Run Test Suite
+        run: go test -v -count=1 ./...
+
+      - name: Build Production Binary
+        run: |
+          go build -ldflags="-H windowsgui -s -w" -o cue.exe .
+          Get-FileHash -Algorithm SHA256 cue.exe | Format-List
+          $hash = (Get-FileHash -Algorithm SHA256 cue.exe).Hash.ToLower()
+          "$hash  cue.exe" | Out-File -Encoding utf8 cue.exe.sha256
+
+      - name: Publish Release to GitHub
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            cue.exe
+            cue.exe.sha256
+          draft: false
+          prerelease: false
+          generate_release_notes: true
