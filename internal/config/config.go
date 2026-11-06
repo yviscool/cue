@@ -33,9 +33,10 @@ type AppearanceSettings struct {
 	Alignment         Alignment `json:"alignment"`         // default "bottom-center"
 	MarginX           int       `json:"marginX"`           // default 100
 	MarginY           int       `json:"marginY"`           // default 100
-	Animation         string    `json:"animation"`         // "none" | "fade" | "zoom" | "float" | "slide"
-	AnimationDuration float64   `json:"animationDuration"` // default 0.25 (seconds)
-	Style             string    `json:"style"`             // "lowprofile" | "minimal" | "laptop" | "pbt"
+	Animation             string    `json:"animation"`             // "none" | "fade" | "zoom" | "float" | "slide"
+	AnimationDuration     float64   `json:"animationDuration"`     // default 0.25 (seconds)
+	DisablePressAnimation bool      `json:"disablePressAnimation"` // disables keycap sinking & press highlight FX
+	Style                 string    `json:"style"`                 // "lowprofile" | "minimal" | "laptop" | "pbt"
 }
 
 // LayoutSettings defines internal keycap element toggles.
@@ -89,13 +90,15 @@ type BackgroundSettings struct {
 type MouseSettings struct {
 	ShowClicks       bool   `json:"showClicks"`       // default false
 	Size             int    `json:"size"`             // default 150
-	Color            string `json:"color"`            // default "#009dff"
+	Color            string `json:"color"`            // default "#00FF6A"
+	ThemePreset      string `json:"themePreset"`      // default "neon_green" ("neon_green", "cyber_cyan", "minimal_white", "obsidian_crimson", "deep_blue", "aurora_bicolor")
 	KeepHighlight    bool   `json:"keepHighlight"`    // default false
 	ShowIndicator    bool   `json:"showIndicator"`    // default true
 	KeepIndicator    bool   `json:"keepIndicator"`    // default true
 	IndicatorSize    int    `json:"indicatorSize"`    // default 50
 	IndicatorOffsetX int    `json:"indicatorOffsetX"` // default 50
 	IndicatorOffsetY int    `json:"indicatorOffsetY"` // default 50
+	ClickLingerMs    int    `json:"clickLingerMs"`    // default 180 (ms)
 }
 
 // GeneralSettings mirrors Cue General tab settings.
@@ -201,13 +204,15 @@ func DefaultConfig() AppConfig {
 		Mouse: MouseSettings{
 			ShowClicks:       false,
 			Size:             150,
-			Color:            "#009dff",
+			Color:            "#00FF6A",
+			ThemePreset:      "neon_green",
 			KeepHighlight:    false,
 			ShowIndicator:    false,
 			KeepIndicator:    false,
 			IndicatorSize:    50,
 			IndicatorOffsetX: 50,
 			IndicatorOffsetY: 50,
+			ClickLingerMs:    180,
 		},
 		TactileAudio: true,
 		SemanticSub:  true,

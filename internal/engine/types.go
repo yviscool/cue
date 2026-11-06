@@ -59,14 +59,15 @@ type DisplayChord struct {
 
 // MouseVisualState represents a mouse action visualization.
 type MouseVisualState struct {
-	Button    hook.MouseButton
-	X         int
-	Y         int
-	Active    bool
-	Dragging  bool
-	Wheel     int
-	Modifiers hook.Modifiers
-	Timestamp time.Time
+	Button     hook.MouseButton
+	X          int
+	Y          int
+	Active     bool
+	Dragging   bool
+	Wheel      int
+	Modifiers  hook.Modifiers
+	Timestamp  time.Time
+	ClickCount int // 1 = single click, 2 = double click, 3+ = multi-click
 }
 
 // UIState is the immutable snapshot consumed by the MyGo HUD / UI renderer.

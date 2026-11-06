@@ -18,6 +18,12 @@ func TestAllThemesCompleteness(t *testing.T) {
 		"Emerald Matrix",
 		"Sunset Horizon",
 		"Royal Velvet",
+		"Sony Walkman 1979",
+		"Teenage OP-1",
+		"Amber Cathode 1977",
+		"Swiss Typography 1957",
+		"Kyoto Kintsugi",
+		"Blueprint Cyanotype",
 	}
 
 	if len(AllThemes) < len(expectedThemes) {
@@ -58,6 +64,49 @@ func TestAllThemesCompleteness(t *testing.T) {
 		if thm.KeyCapHeldBackground.A == 0 {
 			t.Errorf("theme %s has transparent KeyCapHeldBackground", name)
 		}
+
+		// Signature Physical Archetype validations
+		if thm.DefaultStyle == "" {
+			t.Errorf("theme %s has empty DefaultStyle", name)
+		}
+		if thm.HeldPhysics == "" {
+			t.Errorf("theme %s has empty HeldPhysics", name)
+		}
+		if thm.AcousticProfile == "" {
+			t.Errorf("theme %s has empty AcousticProfile", name)
+		}
+		if thm.EffectiveSpringBounce() <= 0 {
+			t.Errorf("theme %s has invalid SpringBounce %f", name, thm.EffectiveSpringBounce())
+		}
+		if thm.EffectiveDurationScale() <= 0 {
+			t.Errorf("theme %s has invalid DurationScale %f", name, thm.EffectiveDurationScale())
+		}
+	}
+}
+
+func TestThemeArchetypePhysics(t *testing.T) {
+	// Liquid Glass: optical pulse mode, 0 physical descent
+	glass := ThemeLiquidGlass
+	if glass.HeldPhysics != HeldPulse {
+		t.Errorf("expected Liquid Glass HeldPulse, got %v", glass.HeldPhysics)
+	}
+	if glass.EffectiveTravelDepth() != 0.0 {
+		t.Errorf("expected Liquid Glass 0 travel depth, got %f", glass.EffectiveTravelDepth())
+	}
+
+	// MacBook Scissor: shallow, snappy scissor travel (1.2px)
+	mac := ThemeMacBookScissor
+	if mac.HeldPhysics != HeldSnappy {
+		t.Errorf("expected MacBook Scissor HeldSnappy, got %v", mac.HeldPhysics)
+	}
+	if mac.EffectiveTravelDepth() != 1.2 {
+		t.Errorf("expected MacBook Scissor 1.2 travel depth, got %f", mac.EffectiveTravelDepth())
+	}
+
+	// IBM Model M: deep buckling spring travel (3.8px)
+	modelM := ThemeIBMModelM
+	if modelM.EffectiveTravelDepth() != 3.8 {
+		t.Errorf("expected IBM Model M 3.8 travel depth, got %f", modelM.EffectiveTravelDepth())
 	}
 }
 

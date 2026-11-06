@@ -522,6 +522,56 @@ func TestDecayRetiresStaleMouseFeedback(t *testing.T) {
 	}
 }
 
+func TestMouseClickLingerAndBadgeLinger(t *testing.T) {
+	eng := NewEngine(
+		WithShowMouseClicks(true),
+		WithMouseClickLinger(100*time.Millisecond),
+		WithMouseBadgeLinger(800*time.Millisecond),
+	)
+	defer eng.Stop()
+
+	now := time.Now()
+	// Single click: should retire after 100ms
+	eng.HandleEvent(hook.InputEvent{Type: hook.EventMouseDown, Button: hook.ButtonLeft, X: 50, Y: 50, Timestamp: now})
+	eng.HandleEvent(hook.InputEvent{Type: hook.EventMouseUp, Button: hook.ButtonLeft, X: 50, Y: 50, Timestamp: now.Add(20 * time.Millisecond)})
+
+	// At 80ms (60ms after MouseUp): still alive
+	eng.DecayCheck(now.Add(80 * time.Millisecond))
+	if eng.State().MouseState.Timestamp.IsZero() {
+		t.Fatal("single click retired too early")
+	}
+
+	// At 150ms (130ms after MouseUp): retired
+	eng.DecayCheck(now.Add(150 * time.Millisecond))
+	if !eng.State().MouseState.Timestamp.IsZero() {
+		t.Fatal("single click should have retired after click linger")
+	}
+
+	// Double click: clickCount > 1, should stay visible for badge linger (800ms)
+	click2 := now.Add(600 * time.Millisecond)
+	eng.HandleEvent(hook.InputEvent{Type: hook.EventMouseDown, Button: hook.ButtonLeft, X: 50, Y: 50, Timestamp: click2})
+	eng.HandleEvent(hook.InputEvent{Type: hook.EventMouseUp, Button: hook.ButtonLeft, X: 50, Y: 50, Timestamp: click2.Add(20 * time.Millisecond)})
+	click3 := click2.Add(100 * time.Millisecond)
+	eng.HandleEvent(hook.InputEvent{Type: hook.EventMouseDown, Button: hook.ButtonLeft, X: 50, Y: 50, Timestamp: click3})
+	eng.HandleEvent(hook.InputEvent{Type: hook.EventMouseUp, Button: hook.ButtonLeft, X: 50, Y: 50, Timestamp: click3.Add(20 * time.Millisecond)})
+
+	if eng.State().MouseState.ClickCount != 2 {
+		t.Fatalf("expected clickCount 2, got %d", eng.State().MouseState.ClickCount)
+	}
+
+	// At 300ms after double click (past 100ms click linger, but within 800ms badge linger):
+	eng.DecayCheck(click3.Add(300 * time.Millisecond))
+	if eng.State().MouseState.Timestamp.IsZero() {
+		t.Fatal("double click badge retired prematurely during badge linger window")
+	}
+
+	// At 900ms after double click: fully retired
+	eng.DecayCheck(click3.Add(900 * time.Millisecond))
+	if !eng.State().MouseState.Timestamp.IsZero() {
+		t.Fatal("double click badge should have retired after badge linger window")
+	}
+}
+
 func TestPrivacyMasking(t *testing.T) {
 	matcher := newMockMatcher()
 	matcher.secrets["secret_key"] = true
@@ -820,6 +870,24 @@ func TestMouseActionsAndWheel(t *testing.T) {
 	}
 	if len(last.Keys) != 2 || last.Keys[0].Label != "Ctrl" || last.Keys[1].Label != "Scroll Up" {
 		t.Fatalf("expected [Ctrl, Scroll Up], got %+v", last.Keys)
+	}
+
+	// 3. Consecutive rapid scrolling must NOT accumulate streak (streak remains 1)
+	for i := 0; i < 5; i++ {
+		eng.HandleEvent(hook.InputEvent{
+			Type:       hook.EventMouseWheel,
+			WheelDelta: 120,
+			Modifiers:  hook.ModCtrl,
+			Timestamp:  time.Now(),
+		})
+	}
+	chords = eng.Chords()
+	last = chords[len(chords)-1]
+	if last.Streak != 1 {
+		t.Fatalf("expected scroll streak to remain 1, got %d", last.Streak)
+	}
+	if eng.State().MouseState.ClickCount != 0 {
+		t.Fatalf("expected scroll wheel to have ClickCount 0, got %d", eng.State().MouseState.ClickCount)
 	}
 }
 

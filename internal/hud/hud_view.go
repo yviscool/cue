@@ -222,7 +222,7 @@ func effectiveRadius(t theme.ThemeConfig, cfg config.AppConfig) float32 {
 // from that edge and Exit returns to it, so the motion explains where the cue
 // lives rather than decorating it with an arbitrary direction.
 func slideVector(a config.Alignment) (float32, float32) {
-	const d float32 = 28
+	const d float32 = 32
 	switch a {
 	case config.AlignTopLeft, config.AlignCenterLeft, config.AlignBottomLeft:
 		return -d, 0
@@ -251,7 +251,7 @@ func (v *ViewState) Render(c *ui.Context) {
 	// Ensure whole canvas root is 100% transparent
 	c.Root().Background(ui.Transparent)
 
-	hasMouse := snap.MouseState.Active || (!snap.MouseState.Timestamp.IsZero() && time.Since(snap.MouseState.Timestamp) < 300*time.Millisecond) || snap.MouseState.Wheel != 0
+	hasMouse := snap.MouseState.Active || !snap.MouseState.Timestamp.IsZero() || snap.MouseState.Wheel != 0
 	shouldRenderMouse := cfg.Mouse.KeepHighlight || cfg.Mouse.KeepIndicator || (hasMouse && (cfg.Mouse.ShowIndicator || cfg.Mouse.ShowClicks))
 
 	// 1. Mouse Overlay (Cursor Ring & Mouse Indicator at cursor coordinates)
@@ -357,17 +357,17 @@ func renderChord(c *ui.Context, chord engine.DisplayChord, t theme.ThemeConfig, 
 		}
 	case "zoom":
 		dur := animDuration
-		bounce := 0.22
+		bounce := 0.18
 		if chord.Velocity == 2 {
 			dur = animDuration * 65 / 100
-			bounce = 0.32
+			bounce = 0.24
 		} else if chord.Velocity == 0 {
 			dur = animDuration * 135 / 100
 			bounce = 0.12
 		}
 		if chord.IsFinisher {
-			dur = animDuration * 115 / 100
-			bounce = 0.28
+			dur = animDuration * 110 / 100
+			bounce = 0.22
 		}
 		springAnim := ui.Animation{
 			Spring: ui.SpringOptions{
@@ -377,8 +377,8 @@ func renderChord(c *ui.Context, chord engine.DisplayChord, t theme.ThemeConfig, 
 		}
 		trans = &ui.ElementTransition{
 			Animation: &springAnim,
-			Enter:     &ui.Motion{Opacity: 0, Scale: 0.60},
-			Exit:      &ui.Motion{Opacity: 0, Scale: 0.70},
+			Enter:     &ui.Motion{Opacity: 0, Scale: 0.68},
+			Exit:      &ui.Motion{Opacity: 0, Scale: 0.85},
 		}
 	case "float":
 		dur := animDuration
@@ -390,12 +390,11 @@ func renderChord(c *ui.Context, chord engine.DisplayChord, t theme.ThemeConfig, 
 		trans = &ui.ElementTransition{
 			Duration: dur,
 			Ease:     ui.EaseOut,
-			Enter:    &ui.Motion{Y: 20, Opacity: 0},
-			Exit:     &ui.Motion{Y: -16, Opacity: 0},
+			Enter:    &ui.Motion{Y: 18, Opacity: 0},
+			Exit:     &ui.Motion{Y: -12, Opacity: 0},
 		}
 	case "slide":
-		// Slide from, and return to, the nearest screen edge. A cue anchored at
-		// the bottom should rise from below, not fly in from an unrelated side.
+		// Slide from, and return to, the nearest screen edge with clear 32px displacement.
 		dx, dy := slideVector(cfg.Appearance.Alignment)
 		dur := animDuration
 		if chord.Velocity == 2 {
@@ -411,32 +410,36 @@ func renderChord(c *ui.Context, chord engine.DisplayChord, t theme.ThemeConfig, 
 		}
 	default: // "spring" or default
 		dur := animDuration
-		bounce := 0.18
-		enterY := float32(12)
-		exitY := float32(-8)
-		enterScale := float32(0.90)
+		if t.EffectiveDurationScale() > 0 {
+			dur = time.Duration(float64(dur) * t.EffectiveDurationScale())
+		}
+		// Natural elastic spring pop: lively, organic, and tactile
+		bounce := t.EffectiveSpringBounce()
+		if bounce < 0.20 {
+			bounce = 0.24
+		}
+		enterY := float32(8)
+		exitY := float32(-6)
+		enterScale := float32(0.88)
 
 		if chord.Velocity == 2 {
-			// Allegro / Supersonic: tight, snappy, responsive spring
-			dur = animDuration * 65 / 100
-			bounce = 0.32
-			enterY = 6
-			exitY = -4
-			enterScale = 0.88
+			dur = dur * 65 / 100
+			bounce = bounce * 1.15
+			enterY = 5
+			exitY = -3
+			enterScale = 0.90
 		} else if chord.Velocity == 0 {
-			// Adagio / Contemplation: floaty feather-soft linger
-			dur = animDuration * 135 / 100
-			bounce = 0.12
-			enterY = 14
-			exitY = -10
-			enterScale = 0.94
+			dur = dur * 135 / 100
+			bounce = bounce * 0.80
+			enterY = 10
+			exitY = -8
+			enterScale = 0.92
 		}
 
 		if chord.IsFinisher {
-			// Finisher settle: bloom like a drop in still water and settle crisply
-			dur = animDuration * 115 / 100
-			bounce = 0.28
-			enterScale = 1.08
+			dur = dur * 110 / 100
+			bounce = bounce * 1.15
+			enterScale = 1.05
 			enterY = 4
 		}
 
@@ -453,15 +456,15 @@ func renderChord(c *ui.Context, chord engine.DisplayChord, t theme.ThemeConfig, 
 		}
 	}
 
-	// Dynamic keycap capsule gap based on Cadence / Velocity
-	capsuleGap := float32(8)
+	// Clean, natural physical keycap gap preventing crowded or colliding keys
+	capsuleGap := float32(10)
 	switch chord.Velocity {
 	case 2: // Allegro: tightly drawn together in unified momentum
-		capsuleGap = 4
-	case 1: // Andante: standard balanced gap
-		capsuleGap = 6
-	default: // Adagio: spacious, contemplative gap
 		capsuleGap = 8
+	case 1: // Andante: standard balanced gap
+		capsuleGap = 10
+	default: // Adagio: spacious, contemplative gap
+		capsuleGap = 10
 	}
 
 	chordColumn := ui.Column(c).
@@ -534,12 +537,26 @@ func renderKeyCap(c *ui.Context, keyId string, key engine.KeyCap, streak int, ve
 		}
 	}
 
-	// Tactile hold physics: sink 3px downward on press
+	// Tactile hold physics: dynamic key travel descent and press highlight FX
 	yOffset := float32(0)
-	if key.IsHeld {
+	pressFxEnabled := cfg.Appearance.Animation != "none" && !cfg.Appearance.DisablePressAnimation
+	if key.IsHeld && pressFxEnabled {
 		bg = t.KeyCapHeldBackground
 		borderColor = t.KeyCapHeldBorder
-		yOffset = 3.0
+
+		// Automatic contrast guard: guarantee crisp readability in held state
+		heldLum := (float32(bg.R)*0.299 + float32(bg.G)*0.587 + float32(bg.B)*0.114) / 255.0
+		textLum := (float32(textColor.R)*0.299 + float32(textColor.G)*0.587 + float32(textColor.B)*0.114) / 255.0
+		if heldLum < 0.45 && textLum < 0.45 {
+			textColor = ui.Hex("#f8fafc")
+		} else if heldLum > 0.65 && textLum > 0.65 {
+			textColor = ui.Hex("#0f172a")
+		}
+
+		// Pulse physics mode keeps physical position zero; mechanical descent uses restrained travel depth.
+		if t.HeldPhysics != theme.HeldPulse {
+			yOffset = t.EffectiveTravelDepth() * 0.70
+		}
 	}
 
 	// Border width: 0 if disabled
@@ -552,19 +569,24 @@ func renderKeyCap(c *ui.Context, keyId string, key engine.KeyCap, streak int, ve
 	}
 
 	// Physical Style Variations (Cue lowprofile, minimal, laptop, pbt, glass, neon, retro, outline)
+	// Pure geometry and vertical drop physics: shadowSpread is kept strictly at 0 to prevent
+	// shadows from bleeding horizontally and fusing adjacent keys together.
 	padX := float32(14)
 	padY := float32(8)
-	shadowY := float32(4)
-	shadowSpread := t.KeyCapShadowSpread
-	shadowBlur := float32(8)
-	shadowColor := borderColor.Alpha(0.28)
+	shadowY := float32(3)
+	shadowSpread := float32(0)
+	shadowBlur := float32(6)
+	shadowColor := borderColor.Alpha(0.25)
 
 	switch style {
 	case "minimal":
+		padX = 14
+		padY = 7
 		borderWidth = 0
 		borderColor = ui.Transparent
 		shadowY = 1
 		shadowBlur = 3
+		shadowSpread = 0
 		shadowColor = ui.RGBA(0, 0, 0, 0.15)
 		radius = radius * 0.7
 	case "laptop":
@@ -574,84 +596,111 @@ func renderKeyCap(c *ui.Context, keyId string, key engine.KeyCap, streak int, ve
 		borderColor = borderColor.Alpha(0.4)
 		shadowY = 2
 		shadowBlur = 4
+		shadowSpread = 0
 		shadowColor = ui.RGBA(0, 0, 0, 0.22)
 		radius = radius * 0.6
 	case "pbt":
-		padX = 16
-		padY = 10
-		borderWidth = borderWidth + 1.0
-		shadowY = 6
-		shadowBlur = 10
-		shadowColor = ui.RGBA(0, 0, 0, 0.45)
+		padX = 15
+		padY = 9
+		borderWidth = borderWidth + 0.8
+		shadowY = 4
+		shadowBlur = 6
+		shadowSpread = 0
+		shadowColor = ui.RGBA(0, 0, 0, 0.35)
 		radius = radius * 1.15
 	case "glass":
 		padX = 15
 		padY = 8
-		// A theme may already supply a translucent "glass" fill (Liquid Glass
-		// does). Multiplying that by 0.45 again would wash the keycap away.
 		if bg.A >= 128 {
 			bg = bg.Alpha(0.45)
 		}
 		borderWidth = 1.5
-		borderColor = ui.RGBA(255, 255, 255, 0.50)
-		shadowY = 8
-		shadowBlur = 16
-		shadowColor = ui.RGBA(0, 0, 0, 0.35)
+		shadowY = 5
+		shadowBlur = 12
+		shadowSpread = 0
+		shadowColor = ui.RGBA(0, 0, 0, 0.30)
+		if key.IsHeld {
+			shadowBlur = 16
+		}
 	case "neon":
 		padX = 14
 		padY = 8
-		bg = ui.RGBA(10, 15, 25, 0.85)
 		borderWidth = 2.0
-		borderColor = ui.Hex("#00f0ff")
-		textColor = ui.Hex("#00f0ff")
 		shadowY = 0
-		shadowBlur = 14
-		shadowSpread = 2
-		shadowColor = ui.RGBA(0, 240, 255, 0.65)
+		shadowBlur = 12
+		shadowSpread = 1
+		shadowColor = borderColor.Alpha(0.60)
+		if key.IsHeld {
+			shadowBlur = 16
+			shadowColor = borderColor.Alpha(0.80)
+		}
 	case "retro":
 		padX = 15
 		padY = 9
-		bg = ui.Hex("#ded5c4")
-		borderWidth = 2.0
-		borderColor = ui.Hex("#a89f8d")
-		textColor = ui.Hex("#1c1c1a")
-		shadowY = 5
+		borderWidth = 1.5
+		shadowY = 4
 		shadowBlur = 0
-		shadowColor = ui.Hex("#786e5c")
+		shadowSpread = 0 // Zero spread: hard bevel drops strictly downwards, zero horizontal spill
+		shadowColor = borderColor.Alpha(0.65)
 		radius = radius * 0.5
 	case "outline":
 		padX = 14
 		padY = 8
-		bg = ui.RGBA(0, 0, 0, 0.25)
-		borderWidth = 2.0
-		borderColor = textColor
+		borderWidth = 1.8
 		shadowY = 0
 		shadowBlur = 0
+		shadowSpread = 0
 		shadowColor = ui.Transparent
 	default: // "lowprofile"
-		// Standard physical model
+		shadowSpread = 0
 	}
 
 	// Velocity Dynamics: Supersonic Radiant Glow (Allegro) & Finisher Settle Accent
-	if velocity == 2 {
-		shadowY = 0
-		shadowBlur = 16
-		shadowSpread = 2
-		glowColor := borderColor.Alpha(0.70)
-		if style == "neon" || (borderColor.R < 30 && borderColor.G > 200) {
-			glowColor = ui.RGBA(0, 240, 255, 0.75) // Radiant cyan neon aura
+	if pressFxEnabled {
+		if velocity == 2 {
+			shadowY = 0
+			shadowBlur = 12
+			shadowSpread = 1
+			glowColor := borderColor.Alpha(0.55)
+			if style == "neon" || (borderColor.R < 30 && borderColor.G > 200) {
+				glowColor = ui.RGBA(0, 240, 255, 0.65) // Radiant cyan neon aura
+			}
+			shadowColor = glowColor
+			borderWidth = borderWidth + 0.3
+		} else if isFinisher {
+			shadowBlur = 10
+			shadowSpread = 1
+			shadowColor = borderColor.Alpha(0.35)
+			borderWidth = borderWidth + 0.3
 		}
-		shadowColor = glowColor
-		borderWidth = borderWidth + 0.5
-	} else if isFinisher {
-		shadowBlur = 12
-		shadowSpread = 1
-		shadowColor = borderColor.Alpha(0.45)
-		borderWidth = borderWidth + 0.5
 	}
 
 	// Text label formatting taking variant, layout symbols, and caps into account
 	label := formatKeycapLabel(key.Label, key.IsModifier, cfg)
+
+	icon := getKeyIcon(key.Label, key.IsModifier, cfg)
+	isMouse := isMouseKey(key.Label)
+	isArrow := isArrowKey(key.Label)
+	isPureIcon := (cfg.Text.Variant == "icon" && icon != nil) || (isArrow && icon != nil && cfg.Text.Variant != "text")
+	shouldShowIcon := icon != nil && (isPureIcon || (cfg.Layout.ShowIcon && (key.IsModifier || isArrow || isMouse)) || isMouse)
+
+	// Mouse event accent: mouse keycaps glow with the active mouse theme accent color (e.g. vibrant green)
+	mth := theme.MouseThemeByID(cfg.Mouse.ThemePreset)
+	mouseAccent := ui.Hex(mth.LeftColor)
+	if isMouse && borderColor.A > 0 {
+		borderColor = mouseAccent.Alpha(0.65)
+	}
+
+	// Standard keycap sizing: guarantee natural aspect ratio so 1u alphanumeric keys
+	// never collapse into skinny or squashed rectangles.
+	minW := float32(44)
+	minH := float32(38)
+	if isPureIcon {
+		minW = 38
+		minH = 38
+	} else if key.IsModifier {
+		minW = 54
+	}
 
 	box := ui.Box(c).
 		Key(keyId).
@@ -660,6 +709,8 @@ func renderKeyCap(c *ui.Context, keyId string, key engine.KeyCap, streak int, ve
 		Radius(radius).
 		PaddingX(padX).
 		PaddingY(padY).
+		MinWidth(minW).
+		MinHeight(minH).
 		AlignItems(ui.Center).
 		Justify(ui.Center).
 		Shadow(0, shadowY, shadowBlur, shadowSpread, shadowColor)
@@ -668,20 +719,18 @@ func renderKeyCap(c *ui.Context, keyId string, key engine.KeyCap, streak int, ve
 		box.Translate(0, yOffset)
 	}
 
-	icon := getKeyIcon(key.Label, key.IsModifier, cfg)
-	isMouse := isMouseKey(key.Label)
-	isArrow := isArrowKey(key.Label)
-	isPureIcon := (cfg.Text.Variant == "icon" && icon != nil) || (isArrow && icon != nil && cfg.Text.Variant != "text")
-	shouldShowIcon := icon != nil && (isPureIcon || (cfg.Layout.ShowIcon && (key.IsModifier || isArrow || isMouse)) || isMouse)
-
 	box.Children(func() {
+		iconColor := textColor
+		if isMouse {
+			iconColor = mouseAccent
+		}
 		if isPureIcon {
 			iconSize := fontSize * 1.05
-			ui.Icon(c, icon).Size(iconSize, iconSize).TextColor(textColor)
+			ui.Icon(c, icon).Size(iconSize, iconSize).TextColor(iconColor)
 		} else if shouldShowIcon {
 			iconSize := fontSize * 0.88
 			ui.Row(c).AlignItems(ui.Center).Justify(ui.Center).Gap(6).Children(func() {
-				ui.Icon(c, icon).Size(iconSize, iconSize).TextColor(textColor)
+				ui.Icon(c, icon).Size(iconSize, iconSize).TextColor(iconColor)
 				if label != "" && !isArrow {
 					ui.Text(c, label).
 						FontSize(fontSize).
@@ -699,7 +748,7 @@ func renderKeyCap(c *ui.Context, keyId string, key engine.KeyCap, streak int, ve
 		}
 
 		if streak > 1 {
-			renderStreakBadge(c, fmt.Sprintf("%s-streak", keyId), streak, t)
+			renderStreakBadge(c, fmt.Sprintf("%s-streak", keyId), streak, t, cfg)
 		}
 	})
 }
@@ -912,7 +961,7 @@ func parseHexSafe(hexStr string, fallback ui.Color) ui.Color {
 }
 
 // renderStreakBadge renders a Keynote/iOS style multiplier badge anchored to the keycap top-right corner.
-func renderStreakBadge(c *ui.Context, badgeId string, streak int, t theme.ThemeConfig) {
+func renderStreakBadge(c *ui.Context, badgeId string, streak int, t theme.ThemeConfig, cfg config.AppConfig) {
 	bg := t.StreakBadgeBackground
 	textColor := t.StreakBadgeTextColor
 	if bg.A == 0 {
@@ -920,7 +969,7 @@ func renderStreakBadge(c *ui.Context, badgeId string, streak int, t theme.ThemeC
 		textColor = ui.Hex("#ffffff")
 	}
 
-	ui.Box(c).
+	badge := ui.Box(c).
 		Key(fmt.Sprintf("%s-%d", badgeId, streak)).
 		Attach(ui.AnchorTopRight, ui.AnchorCenter).
 		Background(bg).
@@ -932,19 +981,23 @@ func renderStreakBadge(c *ui.Context, badgeId string, streak int, t theme.ThemeC
 		AlignItems(ui.Center).
 		Justify(ui.Center).
 		Border(1.2, ui.RGBA(255, 255, 255, 0.45)).
-		Shadow(0, 3, 8, 0, bg.Alpha(0.50)).
-		Transition(ui.ElementTransition{
-			Animation: &ui.Animation{Spring: ui.SpringOptions{Duration: 220 * time.Millisecond, Bounce: 0.40}},
-			Enter:     &ui.Motion{Scale: 0.35, Opacity: 0},
-			Exit:      &ui.Motion{Scale: 0.50, Opacity: 0},
-		}).
-		Children(func() {
-			ui.Textf(c, "×%d", streak).
-				FontSize(11).
-				Bold().
-				SingleLine().
-				TextColor(textColor)
+		Shadow(0, 3, 8, 0, bg.Alpha(0.50))
+
+	if cfg.Appearance.Animation != "none" {
+		badge = badge.Transition(ui.ElementTransition{
+			Animation: &ui.Animation{Spring: ui.SpringOptions{Duration: 180 * time.Millisecond, Bounce: 0.18}},
+			Enter:     &ui.Motion{Scale: 0.82, Opacity: 0},
+			Exit:      &ui.Motion{Scale: 0.88, Opacity: 0},
 		})
+	}
+
+	badge.Children(func() {
+		ui.Textf(c, "×%d", streak).
+			FontSize(11).
+			Bold().
+			SingleLine().
+			TextColor(textColor)
+	})
 }
 
 // renderActionSubtitle renders the contextual action subtitle pill,

@@ -17,53 +17,58 @@ import (
 // Left Click: Primary theme/custom color (#00FF6A by default)
 // Right Click: High-contrast Sky Blue (#38bdf8)
 // Middle Click: Amber Gold (#facc15)
-func mouseBodySvg(btn hook.MouseButton, wheel int, primaryColorHex string) *ui.SVG {
-	if primaryColorHex == "" {
-		primaryColorHex = "#00FF6A"
-	}
+func mouseBodySvg(btn hook.MouseButton, wheel int, mth theme.MouseThemeConfig) *ui.SVG {
 	leftFill := "none"
-	leftStroke := "white"
+	leftStroke := "rgba(255,255,255,0.70)"
 	rightFill := "none"
-	rightStroke := "white"
-	wheelStroke := "white"
+	rightStroke := "rgba(255,255,255,0.70)"
+	wheelStroke := "rgba(255,255,255,0.70)"
 	wheelFill := "none"
-	upArrow := ""
-	downArrow := ""
 
 	switch btn {
 	case hook.ButtonLeft:
-		leftFill = primaryColorHex
-		leftStroke = primaryColorHex
+		leftFill = mth.LeftColor
+		leftStroke = mth.LeftColor
 	case hook.ButtonRight:
-		rightFill = "#38bdf8"
-		rightStroke = "#38bdf8"
+		rightFill = mth.RightColor
+		rightStroke = mth.RightColor
 	case hook.ButtonMiddle:
-		wheelStroke = "#facc15"
-		wheelFill = "#facc15"
+		wheelStroke = mth.WheelColor
+		wheelFill = mth.WheelColor
 	}
 
+	centerElement := ""
 	if wheel > 0 {
-		wheelStroke = primaryColorHex
-		upArrow = fmt.Sprintf(`<path d="M16.5 17V9M13 12.5L16.5 9L20 12.5" stroke="%s" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>`, primaryColorHex)
+		// High-contrast Scroll Up indicator with refined directional arrow head
+		centerElement = fmt.Sprintf(`
+			<rect x="11.5" y="6" width="10" height="17" rx="5" fill="#0c0c12" fill-opacity="0.88" stroke="%s" stroke-width="1.4"/>
+			<line x1="16.5" y1="19" x2="16.5" y2="12.6" stroke="%s" stroke-width="2.2" stroke-linecap="round"/>
+			<polygon points="16.5,8.2 13.2,12.6 19.8,12.6" fill="%s"/>
+		`, mth.WheelColor, mth.WheelColor, mth.WheelColor)
 	} else if wheel < 0 {
-		wheelStroke = primaryColorHex
-		downArrow = fmt.Sprintf(`<path d="M16.5 9V17M13 13.5L16.5 17L20 13.5" stroke="%s" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>`, primaryColorHex)
+		// High-contrast Scroll Down indicator with refined directional arrow head
+		centerElement = fmt.Sprintf(`
+			<rect x="11.5" y="6" width="10" height="17" rx="5" fill="#0c0c12" fill-opacity="0.88" stroke="%s" stroke-width="1.4"/>
+			<line x1="16.5" y1="10" x2="16.5" y2="16.4" stroke="%s" stroke-width="2.2" stroke-linecap="round"/>
+			<polygon points="16.5,20.8 13.2,16.4 19.8,16.4" fill="%s"/>
+		`, mth.WheelColor, mth.WheelColor, mth.WheelColor)
+	} else {
+		// Idle or Middle Click scroll wheel capsule
+		centerElement = fmt.Sprintf(`<rect x="13.5" y="8.5" width="6" height="11" rx="3" stroke="%s" stroke-width="2.2" fill="%s" fill-opacity="0.95"/>`, wheelStroke, wheelFill)
 	}
 
 	svg := fmt.Sprintf(`<svg width="33" height="43" viewBox="0 0 33 43" fill="none" xmlns="http://www.w3.org/2000/svg">
 		<!-- Mouse Body Outer Shell -->
-		<path d="M16.5 41.5C28.5 41.5 31.5 32.48 31.5 21.5C31.5 10.52 28.5 1.5 16.5 1.5C4.5 1.5 1.5 10.52 1.5 21.5C1.5 32.48 4.5 41.5 16.5 41.5Z" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+		<path d="M16.5 41.5C28.5 41.5 31.5 32.48 31.5 21.5C31.5 10.52 28.5 1.5 16.5 1.5C4.5 1.5 1.5 10.52 1.5 21.5C1.5 32.48 4.5 41.5 16.5 41.5Z" stroke="white" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
 		<!-- Top Center Divider -->
-		<path d="M16.5 9.5V1.5" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+		<path d="M16.5 9.5V1.5" stroke="white" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
 		<!-- Left Button Lobe -->
-		<path d="M16.5 1.5C9 1.5 3 7 2.5 18H16.5V1.5Z" fill="%s" fill-opacity="0.85" stroke="%s" stroke-width="1.5"/>
+		<path d="M16.5 1.5C9 1.5 3 7 2.5 18H16.5V1.5Z" fill="%s" fill-opacity="0.92" stroke="%s" stroke-width="2.0"/>
 		<!-- Right Button Lobe -->
-		<path d="M16.5 1.5C24 1.5 30 7 30.5 18H16.5V1.5Z" fill="%s" fill-opacity="0.85" stroke="%s" stroke-width="1.5"/>
-		<!-- Center Scroll Wheel -->
-		<rect x="13.5" y="9.5" width="6" height="10" rx="3" stroke="%s" stroke-width="2.2" fill="%s" fill-opacity="0.9"/>
+		<path d="M16.5 1.5C24 1.5 30 7 30.5 18H16.5V1.5Z" fill="%s" fill-opacity="0.92" stroke="%s" stroke-width="2.0"/>
+		<!-- Center Scroll Element (Idle capsule or Bold Directional Arrow) -->
 		%s
-		%s
-	</svg>`, leftFill, leftStroke, rightFill, rightStroke, wheelStroke, wheelFill, upArrow, downArrow)
+	</svg>`, leftFill, leftStroke, rightFill, rightStroke, centerElement)
 
 	return ui.MustParseSVG([]byte(svg))
 }
@@ -87,23 +92,30 @@ func RenderMouseOverlay(c *ui.Context, state engine.MouseVisualState, cfg config
 		return
 	}
 
+	clickLinger := time.Duration(cfg.Mouse.ClickLingerMs) * time.Millisecond
+	if clickLinger <= 0 {
+		clickLinger = 180 * time.Millisecond
+	}
+
 	now := time.Now()
 	clickAge := 999 * time.Second
 	if !state.Timestamp.IsZero() {
 		clickAge = now.Sub(state.Timestamp)
 	}
-	isRecentlyClicked := clickAge < 260*time.Millisecond
+	isRecentlyClicked := clickAge < clickLinger
 	showClickRipple := cfg.Mouse.ShowClicks && (state.Active || isRecentlyClicked)
 	showHighlight := cfg.Mouse.KeepHighlight || showClickRipple
 
-	// Primary and secondary button colors
-	primaryHex := cfg.Mouse.Color
-	if primaryHex == "" {
-		primaryHex = "#00FF6A"
+	// Primary and secondary button colors from MouseTheme
+	mth := theme.MouseThemeByID(cfg.Mouse.ThemePreset)
+	if cfg.Mouse.Color != "" && cfg.Mouse.ThemePreset == "" {
+		mth.LeftColor = cfg.Mouse.Color
+		mth.RingColor = cfg.Mouse.Color
 	}
-	leftColor := ui.Hex(primaryHex)
-	rightColor := ui.Hex("#38bdf8") // Distinctive ice blue for right click
-	middleColor := ui.Hex("#facc15") // Radiant amber gold for middle click
+	leftColor := ui.Hex(mth.LeftColor)
+	rightColor := ui.Hex(mth.RightColor)
+	middleColor := ui.Hex(mth.WheelColor)
+	ringColor := ui.Hex(mth.RingColor)
 
 	// Determine active click color based on button pressed
 	clickColor := leftColor
@@ -176,6 +188,25 @@ func RenderMouseOverlay(c *ui.Context, state engine.MouseVisualState, cfg config
 					Enter:    &ui.Motion{Scale: 0.45, Opacity: 0.50},
 					Exit:     &ui.Motion{Scale: 2.10, Opacity: 0},
 				})
+
+			// Layer 4: Echo Ripple for Double / Multi-click (Concentric Pulse)
+			if state.ClickCount > 1 {
+				echoSize := baseSize * 1.85
+				ui.Box(c.Key(fmt.Sprintf("mouse-echo-%d-%d", clickKey, state.ClickCount))).
+					Absolute().
+					Left(cx - echoSize/2).
+					Top(cy - echoSize/2).
+					Size(echoSize, echoSize).
+					Radius(echoSize / 2).
+					Border(2.5, clickColor).
+					Shadow(0, 0, 18, 0, clickColor.Alpha(0.60)).
+					Transition(ui.ElementTransition{
+						Duration: 240 * time.Millisecond,
+						Ease:     ui.EaseOut,
+						Enter:    &ui.Motion{Scale: 0.25, Opacity: 1.0},
+						Exit:     &ui.Motion{Scale: 1.85, Opacity: 0},
+					})
+			}
 		} else if cfg.Mouse.KeepHighlight {
 			// Steady idle cursor spotlight ring when KeepHighlight is on
 			steadySize := baseSize
@@ -189,8 +220,8 @@ func RenderMouseOverlay(c *ui.Context, state engine.MouseVisualState, cfg config
 				Top(cy - steadySize/2).
 				Size(steadySize, steadySize).
 				Radius(steadySize / 2).
-				Border(borderWidth, leftColor.Alpha(0.70)).
-				Shadow(0, 0, 12, 0, leftColor.Alpha(0.35)).
+				Border(borderWidth, ringColor.Alpha(0.70)).
+				Shadow(0, 0, 12, 0, ringColor.Alpha(0.35)).
 				Transition(ui.ElementTransition{
 					Duration: 180 * time.Millisecond,
 					Ease:     ui.EaseOut,
@@ -201,7 +232,18 @@ func RenderMouseOverlay(c *ui.Context, state engine.MouseVisualState, cfg config
 	}
 
 	// 2. Button & Scroll Indicator (Cue mouse silhouette)
-	isRecentlyActiveIndicator := clickAge < 260*time.Millisecond
+	badgeLinger := 1200 * time.Millisecond
+	if cfg.General.LingerDurationMs > 0 {
+		badgeLinger = time.Duration(cfg.General.LingerDurationMs) * time.Millisecond
+		if badgeLinger > 1500*time.Millisecond {
+			badgeLinger = 1500 * time.Millisecond
+		} else if badgeLinger < 800*time.Millisecond {
+			badgeLinger = 800 * time.Millisecond
+		}
+	}
+
+	hasActiveBadge := state.ClickCount > 1 && clickAge < badgeLinger && state.Wheel == 0
+	isRecentlyActiveIndicator := clickAge < clickLinger || hasActiveBadge
 	showIndicator := cfg.Mouse.KeepIndicator || (cfg.Mouse.ShowIndicator && (state.Active || state.Wheel != 0 || isRecentlyActiveIndicator))
 
 	if showIndicator {
@@ -218,36 +260,108 @@ func RenderMouseOverlay(c *ui.Context, state engine.MouseVisualState, cfg config
 		w := indSize * 0.85
 		h := indSize
 
-		ui.Box(c.Key("mouse-btn-indicator")).
+		boxRadius := indSize * 0.22
+		if boxRadius < 6 {
+			boxRadius = 6
+		} else if boxRadius > 24 {
+			boxRadius = 24
+		}
+
+		indicatorBox := ui.Box(c.Key("mouse-btn-indicator")).
 			Absolute().
 			Left(cx + ox).
 			Top(cy + oy).
 			Width(w + 14).
 			Height(h + 14).
 			Background(ui.RGBA(12, 12, 16, 0.78)).
-			Radius(10).
+			Radius(boxRadius).
 			Border(1, ui.RGBA(255, 255, 255, 0.16)).
 			Shadow(0, 6, 20, 0, ui.RGBA(0, 0, 0, 0.50)).
 			AlignItems(ui.Center).
-			Justify(ui.Center).
-			Transition(ui.ElementTransition{
+			Justify(ui.Center)
+
+		if cfg.Appearance.Animation != "none" {
+			indicatorBox = indicatorBox.Transition(ui.ElementTransition{
 				Animation: &ui.Animation{Spring: ui.SpringOptions{Duration: 220 * time.Millisecond, Bounce: 0.18}},
 				Enter:     &ui.Motion{Scale: 0.86, Opacity: 0},
 				Exit:      &ui.Motion{Scale: 0.92, Opacity: 0},
-			}).
-			Children(func() {
-				btn := state.Button
-				if !state.Active && !isRecentlyActiveIndicator {
-					btn = hook.ButtonNone
-				}
-				wheel := state.Wheel
-				if !isRecentlyActiveIndicator {
-					wheel = 0
-				}
-				ui.Icon(c, mouseBodySvg(btn, wheel, primaryHex)).
-					Size(w, h).
-					TextColor(ui.Hex("#ffffff"))
 			})
+		}
+
+		indicatorBox.Children(func() {
+			btn := state.Button
+			// Lobe highlight turns off after clickLinger even while multi-click badge remains visible
+			if !state.Active && clickAge >= clickLinger {
+				btn = hook.ButtonNone
+			}
+			wheel := state.Wheel
+			if !state.Active && clickAge >= clickLinger {
+				wheel = 0
+			}
+			ui.Image(c, mouseBodySvg(btn, wheel, mth)).
+				Size(w, h)
+
+			// Multi-click Retina Pill Badge (e.g. ×2 for double-click, ×3 for triple-click)
+			// Dynamically anchored to the physical button pressed: Left Click -> Top Left, Right -> Top Right, Middle -> Top Center
+			if hasActiveBadge {
+				badgeBg := ui.Hex(mth.BadgeColor)
+				if badgeBg.A == 0 {
+					badgeBg = t.StreakBadgeBackground
+					if badgeBg.A == 0 {
+						badgeBg = ui.Hex("#ef4444")
+					}
+				}
+				badgeTextColor := ui.Hex("#ffffff")
+
+				badgeFont := 10.5 * (0.8 + 0.2*(indSize/40.0))
+				if badgeFont > 22 {
+					badgeFont = 22
+				}
+				badgeRadius := 8 * (0.8 + 0.2*(indSize/40.0))
+				if badgeRadius > 16 {
+					badgeRadius = 16
+				}
+				badgePadX := 5 * (0.8 + 0.2*(indSize/40.0))
+				badgePadY := 1.5 * (0.8 + 0.2*(indSize/40.0))
+
+				// Anchor directly on top of the button lobe being struck
+				anchor := ui.AnchorTopLeft
+				if state.Button == hook.ButtonRight {
+					anchor = ui.AnchorTopRight
+				} else if state.Button == hook.ButtonMiddle {
+					anchor = ui.AnchorTop
+				}
+
+				badgeBox := ui.Box(c.Key(fmt.Sprintf("mouse-badge-%d", state.ClickCount))).
+					Attach(anchor, ui.AnchorCenter).
+					Background(badgeBg).
+					Radius(badgeRadius).
+					PaddingX(badgePadX).
+					PaddingY(badgePadY).
+					MinWidth(badgeFont * 1.6).
+					MinHeight(badgeFont * 1.4).
+					AlignItems(ui.Center).
+					Justify(ui.Center).
+					Border(1, ui.RGBA(255, 255, 255, 0.40)).
+					Shadow(0, 2, 6, 0, badgeBg.Alpha(0.50))
+
+				if cfg.Appearance.Animation != "none" {
+					badgeBox = badgeBox.Transition(ui.ElementTransition{
+						Animation: &ui.Animation{Spring: ui.SpringOptions{Duration: 180 * time.Millisecond, Bounce: 0.22}},
+						Enter:     &ui.Motion{Scale: 0.65, Opacity: 0},
+						Exit:      &ui.Motion{Scale: 0.80, Opacity: 0},
+					})
+				}
+
+				badgeBox.Children(func() {
+					ui.Textf(c, "×%d", state.ClickCount).
+						FontSize(badgeFont).
+						Bold().
+						SingleLine().
+						TextColor(badgeTextColor)
+				})
+			}
+		})
 	}
 }
 

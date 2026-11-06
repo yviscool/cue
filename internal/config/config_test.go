@@ -51,8 +51,8 @@ func TestDefaultConfigCompleteness(t *testing.T) {
 	if cfg.ThemePreset != "Liquid Glass" {
 		t.Errorf("expected Liquid Glass theme, got %s", cfg.ThemePreset)
 	}
-	if cfg.Mouse.Size != 150 || cfg.Mouse.Color != "#009dff" {
-		t.Errorf("expected mouse size 150, color #009dff, got %d/%s", cfg.Mouse.Size, cfg.Mouse.Color)
+	if cfg.Mouse.Size != 150 || cfg.Mouse.Color != "#00FF6A" {
+		t.Errorf("expected mouse size 150, color #00FF6A, got %d/%s", cfg.Mouse.Size, cfg.Mouse.Color)
 	}
 }
 

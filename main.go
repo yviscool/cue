@@ -248,6 +248,7 @@ func (a *app) ready() {
 		engine.WithMatcher(a.matcher),
 		engine.WithThemeName(cfg.ThemePreset),
 		engine.WithShowMouseClicks(cfg.Mouse.ShowClicks),
+		engine.WithMouseClickLinger(time.Duration(cfg.Mouse.ClickLingerMs)*time.Millisecond),
 		engine.WithDragThreshold(cfg.General.DragThreshold),
 		engine.WithWordGrouping(cfg.General.WordGrouping),
 		engine.WithLingerShort(time.Duration(cfg.General.LingerDurationMs)*time.Millisecond),
@@ -424,6 +425,7 @@ func (a *app) applyConfig(cfg config.AppConfig) {
 	a.eng.SetFilterMode(filterModeFor(cfg.General.Filter))
 	a.eng.SetAllowedKeys(cfg.General.AllowedKeys)
 	a.eng.SetShowMouseClicks(cfg.Mouse.ShowClicks)
+	a.eng.SetMouseClickLinger(cfg.Mouse.ClickLingerMs)
 	a.eng.SetDragThreshold(cfg.General.DragThreshold)
 	a.eng.SetSoundActive(cfg.TactileAudio)
 	a.eng.SetWordGrouping(cfg.General.WordGrouping)
@@ -512,7 +514,25 @@ func disableWindowBorder(hwnd uintptr) {
 	}
 }
 
+func hideConsoleOnWindows() {
+	if runtime.GOOS != "windows" {
+		return
+	}
+	kernel32 := syscall.NewLazyDLL("kernel32.dll")
+	user32 := syscall.NewLazyDLL("user32.dll")
+	procGetConsole := kernel32.NewProc("GetConsoleWindow")
+	procShowWindow := user32.NewProc("ShowWindow")
+	if procGetConsole != nil && procShowWindow != nil {
+		hwnd, _, _ := procGetConsole.Call()
+		if hwnd != 0 {
+			const swHide = 0
+			procShowWindow.Call(hwnd, uintptr(swHide))
+		}
+	}
+}
+
 func main() {
+	hideConsoleOnWindows()
 	a := &app{}
 	mygo.App.SetName("Cue")
 	mygo.App.OnWindowAllClosed(func() {})

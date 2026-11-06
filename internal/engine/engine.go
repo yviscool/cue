@@ -18,6 +18,8 @@ const (
 	defaultStreakThreshold = 1200 * time.Millisecond
 	defaultLingerShort     = 1800 * time.Millisecond
 	defaultLingerLong      = 2500 * time.Millisecond
+	defaultMouseClickLinger = 180 * time.Millisecond
+	defaultMouseBadgeLinger = 1200 * time.Millisecond
 	defaultMaxChords       = 5
 	defaultThemeName       = "Default"
 )
@@ -40,6 +42,8 @@ type Engine struct {
 	appContext       string
 	themeName        string
 	showMouseClicks  bool
+	mouseClickLinger time.Duration
+	mouseBadgeLinger time.Duration
 	dragThreshold    int
 	wordGrouping     bool
 	wordBreakPending bool
@@ -51,6 +55,7 @@ type Engine struct {
 	pressedButton   hook.MouseButton
 	lastClickTime   time.Time
 	lastClickButton hook.MouseButton
+	clickCount      int
 	dragStartX      int
 	dragStartY      int
 	isDragging      bool
@@ -59,6 +64,10 @@ type Engine struct {
 	chordSeq        uint64
 	recentStrokes   []time.Time // timestamps of recent keystrokes within sliding window
 	currentWPM      int         // instantaneous words per minute
+
+	// Mouse retirement timers
+	mouseRetireTimer *time.Timer
+	mouseBadgeTimer  *time.Timer
 
 	// Decay cadence loop control
 	stopCh    chan struct{}
@@ -181,6 +190,24 @@ func WithShowMouseClicks(show bool) Option {
 	}
 }
 
+// WithMouseClickLinger sets the linger duration for mouse button click highlight and ripple.
+func WithMouseClickLinger(d time.Duration) Option {
+	return func(e *Engine) {
+		if d > 0 {
+			e.mouseClickLinger = d
+		}
+	}
+}
+
+// WithMouseBadgeLinger sets the linger duration for multi-click streak badge.
+func WithMouseBadgeLinger(d time.Duration) Option {
+	return func(e *Engine) {
+		if d > 0 {
+			e.mouseBadgeLinger = d
+		}
+	}
+}
+
 // WithDragThreshold sets drag movement sensitivity threshold.
 func WithDragThreshold(th int) Option {
 	return func(e *Engine) {
@@ -198,19 +225,21 @@ func WithWordGrouping(grouping bool) Option {
 // NewEngine creates and initializes a Engine instance.
 func NewEngine(opts ...Option) *Engine {
 	e := &Engine{
-		filterMode:      FilterSmart,
-		decayInterval:   defaultDecayInterval,
-		streakThreshold: defaultStreakThreshold,
-		lingerShort:     defaultLingerShort,
-		lingerLong:      defaultLingerLong,
-		maxChords:       defaultMaxChords,
-		soundActive:     true,
-		themeName:       defaultThemeName,
-		showMouseClicks: false,
-		dragThreshold:   50,
-		heldKeys:        make(map[string]bool),
-		allowedKeys:     make(map[string]bool),
-		stopCh:          make(chan struct{}),
+		filterMode:       FilterSmart,
+		decayInterval:    defaultDecayInterval,
+		streakThreshold:  defaultStreakThreshold,
+		lingerShort:      defaultLingerShort,
+		lingerLong:       defaultLingerLong,
+		mouseClickLinger: defaultMouseClickLinger,
+		mouseBadgeLinger: defaultMouseBadgeLinger,
+		maxChords:        defaultMaxChords,
+		soundActive:      true,
+		themeName:        defaultThemeName,
+		showMouseClicks:  false,
+		dragThreshold:    50,
+		heldKeys:         make(map[string]bool),
+		allowedKeys:      make(map[string]bool),
+		stopCh:           make(chan struct{}),
 	}
 
 	for _, opt := range opts {
@@ -226,6 +255,38 @@ func (e *Engine) SetShowMouseClicks(show bool) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.showMouseClicks = show
+}
+
+// SetMouseClickLinger updates the linger duration for mouse button highlight and ripple.
+func (e *Engine) SetMouseClickLinger(ms int) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if ms <= 0 {
+		ms = int(defaultMouseClickLinger / time.Millisecond)
+	}
+	if ms < 40 {
+		ms = 40
+	}
+	if ms > 2000 {
+		ms = 2000
+	}
+	e.mouseClickLinger = time.Duration(ms) * time.Millisecond
+}
+
+// SetMouseBadgeLinger updates the linger duration for multi-click streak badge.
+func (e *Engine) SetMouseBadgeLinger(ms int) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if ms <= 0 {
+		ms = int(defaultMouseBadgeLinger / time.Millisecond)
+	}
+	if ms < 300 {
+		ms = 300
+	}
+	if ms > 5000 {
+		ms = 5000
+	}
+	e.mouseBadgeLinger = time.Duration(ms) * time.Millisecond
 }
 
 // SetDragThreshold sets minimum displacement pixels before triggering mouse drag.
@@ -319,6 +380,17 @@ func (e *Engine) Stop() {
 		}
 		e.wg.Wait()
 
+		e.mu.Lock()
+		if e.mouseRetireTimer != nil {
+			e.mouseRetireTimer.Stop()
+			e.mouseRetireTimer = nil
+		}
+		if e.mouseBadgeTimer != nil {
+			e.mouseBadgeTimer.Stop()
+			e.mouseBadgeTimer = nil
+		}
+		e.mu.Unlock()
+
 		e.subMu.Lock()
 		for _, ch := range e.subscribers {
 			close(ch)
@@ -341,6 +413,75 @@ func (e *Engine) decayLoop() {
 		case now := <-ticker.C:
 			e.DecayCheck(now)
 		}
+	}
+}
+
+// scheduleMouseRetirementLocked programs precise high-resolution timers for:
+// 1) Click linger expiration (turns off lobe highlight and ripple)
+// 2) Multi-click badge expiration (dismisses the ×2 streak badge and mouse silhouette)
+func (e *Engine) scheduleMouseRetirementLocked() {
+	if e.mouseRetireTimer != nil {
+		e.mouseRetireTimer.Stop()
+		e.mouseRetireTimer = nil
+	}
+	if e.mouseBadgeTimer != nil {
+		e.mouseBadgeTimer.Stop()
+		e.mouseBadgeTimer = nil
+	}
+
+	linger := e.mouseClickLinger
+	if linger <= 0 {
+		linger = defaultMouseClickLinger
+	}
+
+	ts := e.mouseState.Timestamp
+	clickCount := e.mouseState.ClickCount
+	isWheel := e.mouseState.Wheel != 0
+
+	if clickCount > 1 && !isWheel {
+		// Multi-click streak:
+		// Step 1: When click linger expires, refresh so the button lobe returns to idle outline
+		e.mouseRetireTimer = time.AfterFunc(linger, func() {
+			e.mu.Lock()
+			defer e.mu.Unlock()
+			if e.mouseState.Timestamp.Equal(ts) && !e.mouseState.Active {
+				e.emitStateLocked()
+			}
+		})
+
+		// Step 2: When badge linger expires, fully retire mouse state and badge
+		badgeLinger := e.mouseBadgeLinger
+		if badgeLinger <= linger {
+			badgeLinger = defaultMouseBadgeLinger
+		}
+		e.mouseBadgeTimer = time.AfterFunc(badgeLinger, func() {
+			e.mu.Lock()
+			defer e.mu.Unlock()
+			if e.mouseState.Timestamp.Equal(ts) && !e.mouseState.Active {
+				e.mouseState.Active = false
+				e.mouseState.Dragging = false
+				e.mouseState.Wheel = 0
+				e.mouseState.Button = hook.ButtonNone
+				e.mouseState.Timestamp = time.Time{}
+				e.mouseState.ClickCount = 0
+				e.emitStateLocked()
+			}
+		})
+	} else {
+		// Single click or wheel scroll: retire completely at click linger
+		e.mouseRetireTimer = time.AfterFunc(linger, func() {
+			e.mu.Lock()
+			defer e.mu.Unlock()
+			if e.mouseState.Timestamp.Equal(ts) && !e.mouseState.Active {
+				e.mouseState.Active = false
+				e.mouseState.Dragging = false
+				e.mouseState.Wheel = 0
+				e.mouseState.Button = hook.ButtonNone
+				e.mouseState.Timestamp = time.Time{}
+				e.mouseState.ClickCount = 0
+				e.emitStateLocked()
+			}
+		})
 	}
 }
 
@@ -376,18 +517,33 @@ func (e *Engine) DecayCheck(now time.Time) int {
 		}
 	}
 
-	// Mouse feedback is time-based: a click ring lives ~220 ms and the button/wheel
-	// indicator ~260 ms. Without this cleanup the last frame would remain painted
-	// until the next input event, leaving a permanently stuck ring or scroll arrow.
+	// Mouse feedback is time-based: a click ring lives mouseClickLinger (e.g. 180 ms)
+	// and a multi-click streak badge lives mouseBadgeLinger (e.g. 1200 ms).
+	// Without this cleanup the last frame would remain painted until the next input event.
 	mouseRetired := false
-	if !e.mouseState.Timestamp.IsZero() && !e.mouseState.Active &&
-		now.Sub(e.mouseState.Timestamp) > 320*time.Millisecond {
-		e.mouseState.Active = false
-		e.mouseState.Dragging = false
-		e.mouseState.Wheel = 0
-		e.mouseState.Button = hook.ButtonNone
-		e.mouseState.Timestamp = time.Time{}
-		mouseRetired = true
+	if !e.mouseState.Timestamp.IsZero() && !e.mouseState.Active {
+		age := now.Sub(e.mouseState.Timestamp)
+		linger := e.mouseClickLinger
+		if linger <= 0 {
+			linger = defaultMouseClickLinger
+		}
+		badgeLinger := e.mouseBadgeLinger
+		if badgeLinger <= linger {
+			badgeLinger = defaultMouseBadgeLinger
+		}
+		expireDuration := linger
+		if e.mouseState.ClickCount > 1 && e.mouseState.Wheel == 0 {
+			expireDuration = badgeLinger
+		}
+		if age >= expireDuration {
+			e.mouseState.Active = false
+			e.mouseState.Dragging = false
+			e.mouseState.Wheel = 0
+			e.mouseState.Button = hook.ButtonNone
+			e.mouseState.Timestamp = time.Time{}
+			e.mouseState.ClickCount = 0
+			mouseRetired = true
+		}
 	}
 
 	wpmBefore := e.currentWPM
@@ -406,8 +562,18 @@ func (e *Engine) Clear() {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
+	if e.mouseRetireTimer != nil {
+		e.mouseRetireTimer.Stop()
+		e.mouseRetireTimer = nil
+	}
+	if e.mouseBadgeTimer != nil {
+		e.mouseBadgeTimer.Stop()
+		e.mouseBadgeTimer = nil
+	}
+
 	e.chords = nil
 	e.mouseState = MouseVisualState{}
+	e.clickCount = 0
 	e.lastChordKey = ""
 	e.lastChordMods = hook.ModNone
 	e.emitStateLocked()
@@ -568,10 +734,14 @@ func (e *Engine) pushChordLocked(now time.Time, mods hook.Modifiers, keyName str
 	isFinisher := isFinisherKey(keyName)
 
 	// Streak check: identical to the most recent chord (same modifiers + same key) within threshold
+	// NOTE: Scroll wheel events are continuous fluid motions and must never accumulate streak badges.
+	isScroll := strings.EqualFold(keyName, "Scroll Down") || strings.EqualFold(keyName, "Scroll Up")
 	if len(e.chords) > 0 && (!e.wordGrouping || mods != hook.ModNone) && e.lastChordMods == mods && strings.EqualFold(e.lastChordKey, keyName) {
 		lastChord := &e.chords[len(e.chords)-1]
 		if now.Sub(lastChord.Timestamp) <= e.streakThreshold {
-			lastChord.Streak++
+			if !isScroll {
+				lastChord.Streak++
+			}
 			lastChord.Velocity = velocity
 			duration := e.lingerShort
 			if lastChord.Action.Title != "" {
@@ -769,7 +939,21 @@ func (e *Engine) handleMouseEvent(ev hook.InputEvent) {
 
 	switch ev.Type {
 	case hook.EventMouseDown:
+		if e.mouseRetireTimer != nil {
+			e.mouseRetireTimer.Stop()
+			e.mouseRetireTimer = nil
+		}
+		if e.mouseBadgeTimer != nil {
+			e.mouseBadgeTimer.Stop()
+			e.mouseBadgeTimer = nil
+		}
+
 		active = true
+		if !e.lastClickTime.IsZero() && now.Sub(e.lastClickTime) <= 400*time.Millisecond && e.lastClickButton == ev.Button {
+			e.clickCount++
+		} else {
+			e.clickCount = 1
+		}
 		e.pressedButton = ev.Button
 		e.lastClickButton = ev.Button
 		e.lastClickTime = now
@@ -795,7 +979,15 @@ func (e *Engine) handleMouseEvent(ev hook.InputEvent) {
 				allowed = true
 			}
 			if allowed {
-				e.pushChordLocked(now, mods, btnName, true)
+				if e.clickCount > 1 && len(e.chords) > 0 && e.lastChordKey == btnName && e.lastChordMods == mods {
+					lastChord := &e.chords[len(e.chords)-1]
+					lastChord.Streak = e.clickCount
+					lastChord.ExpiresAt = now.Add(e.lingerShort)
+					lastChord.Timestamp = now
+					lastChord.IsActive = true
+				} else {
+					e.pushChordLocked(now, mods, btnName, true)
+				}
 			}
 		}
 
@@ -843,7 +1035,7 @@ func (e *Engine) handleMouseEvent(ev hook.InputEvent) {
 
 	case hook.EventMouseWheel:
 		active = false
-		e.lastClickTime = now
+		e.clickCount = 0 // Scroll wheel is not a mouse click; clear clickCount to prevent multi-click badges
 		clickTimestamp = now
 		wheelDelta = ev.WheelDelta
 		wheelKey := "Scroll Down"
@@ -868,14 +1060,19 @@ func (e *Engine) handleMouseEvent(ev hook.InputEvent) {
 	}
 
 	e.mouseState = MouseVisualState{
-		Button:    btn,
-		X:         ev.X,
-		Y:         ev.Y,
-		Active:    active,
-		Dragging:  e.isDragging,
-		Wheel:     wheelDelta,
-		Modifiers: ev.Modifiers,
-		Timestamp: clickTimestamp,
+		Button:     btn,
+		X:          ev.X,
+		Y:          ev.Y,
+		Active:     active,
+		Dragging:   e.isDragging,
+		Wheel:      wheelDelta,
+		Modifiers:  ev.Modifiers,
+		Timestamp:  clickTimestamp,
+		ClickCount: e.clickCount,
+	}
+
+	if ev.Type == hook.EventMouseUp || ev.Type == hook.EventMouseWheel {
+		e.scheduleMouseRetirementLocked()
 	}
 
 	e.emitStateLocked()
