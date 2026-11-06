@@ -111,12 +111,18 @@ func RenderMouseOverlay(c *ui.Context, state engine.MouseVisualState, cfg config
 
 		ui.Box(c.Key("mouse-cursor-ring")).
 			Absolute().
-			Left(cx - renderSize/2).
-			Top(cy - renderSize/2).
+			Left(cx-renderSize/2).
+			Top(cy-renderSize/2).
 			Size(renderSize, renderSize).
-			Radius(renderSize / 2).
+			Radius(renderSize/2).
 			Border(borderWidth, ringColor).
-			Shadow(0, 0, 14, 0, ringColor.Alpha(0.55))
+			Shadow(0, 0, 14, 0, ringColor.Alpha(0.55)).
+			Transition(ui.ElementTransition{
+				Duration: 170 * time.Millisecond,
+				Ease:     ui.EaseOut,
+				Enter:    &ui.Motion{Scale: 0.72, Opacity: 0},
+				Exit:     &ui.Motion{Scale: 1.35, Opacity: 0},
+			})
 	}
 
 	// 2. Button & Scroll Indicator (Cue mouse silhouette)
@@ -139,16 +145,21 @@ func RenderMouseOverlay(c *ui.Context, state engine.MouseVisualState, cfg config
 
 		ui.Box(c.Key("mouse-btn-indicator")).
 			Absolute().
-			Left(cx + ox).
-			Top(cy + oy).
-			Width(w + 14).
-			Height(h + 14).
+			Left(cx+ox).
+			Top(cy+oy).
+			Width(w+14).
+			Height(h+14).
 			Background(ui.RGBA(12, 12, 16, 0.78)).
 			Radius(10).
 			Border(1, ui.RGBA(255, 255, 255, 0.16)).
 			Shadow(0, 6, 20, 0, ui.RGBA(0, 0, 0, 0.50)).
 			AlignItems(ui.Center).
 			Justify(ui.Center).
+			Transition(ui.ElementTransition{
+				Animation: &ui.Animation{Spring: ui.SpringOptions{Duration: 220 * time.Millisecond, Bounce: 0.18}},
+				Enter:     &ui.Motion{Scale: 0.86, Opacity: 0},
+				Exit:      &ui.Motion{Scale: 0.92, Opacity: 0},
+			}).
 			Children(func() {
 				btn := state.Button
 				if !state.Active && !isRecentlyActiveIndicator {

@@ -17,6 +17,8 @@ const (
 	FilterAll
 	// FilterSilent suppresses all visualizations (DND / Presentation Pause).
 	FilterSilent
+	// FilterCustom only visualizes keystrokes matching the configured AllowedKeys whitelist.
+	FilterCustom
 )
 
 func (m FilterMode) String() string {
@@ -27,6 +29,8 @@ func (m FilterMode) String() string {
 		return "All Keys"
 	case FilterSilent:
 		return "Silent (Paused)"
+	case FilterCustom:
+		return "Custom (Allowed Keys)"
 	default:
 		return "Unknown"
 	}

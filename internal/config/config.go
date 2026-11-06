@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -108,6 +109,9 @@ type GeneralSettings struct {
 
 // AppConfig is the complete, 100% faithful configuration model matching Cue specifications.
 type AppConfig struct {
+	// Version is the schema version used for one-time configuration migrations.
+	Version int `json:"version"`
+
 	General    GeneralSettings    `json:"general"`
 	Appearance AppearanceSettings `json:"appearance"`
 	Layout     LayoutSettings     `json:"layout"`
@@ -121,13 +125,21 @@ type AppConfig struct {
 	// Jobsian Enhanced Extensions (Optional enhancements)
 	TactileAudio bool   `json:"tactileAudio"` // Micro-acoustics ON/OFF
 	SemanticSub  bool   `json:"semanticSub"`  // Semantic Action subtitles ON/OFF
-	ThemePreset  string `json:"themePreset"`  // e.g. "liquid-glass", "cupertino-pro", "braun-tactile", or original schemes
+	ThemePreset  string `json:"themePreset"`  // e.g. "Liquid Glass", "MacBook Scissor", "Dieter Rams 1960"
 	Language     string `json:"language"`     // "zh-CN", "en-US", "zh-TW", "ja-JP", or "" (system default)
 }
 
-// DefaultConfig returns the exact 100% default configuration matching mulaRahul/cue.
+// configVersion 2 made theme-derived values inherit from the selected preset
+// instead of hard-coding the old Keyviz palette into every new installation.
+const configVersion = 2
+
+// DefaultConfig returns the official Cue defaults. Theme-derived values are left
+// empty/zero on purpose: the selected theme is the single source of truth for
+// keycap color, typography, corner radius, and physical style. Users can still
+// override any of them explicitly in the settings studio.
 func DefaultConfig() AppConfig {
 	return AppConfig{
+		Version: configVersion,
 		General: GeneralSettings{
 			Filter:           "modifiers",
 			AllowedKeys:      []string{"ControlLeft", "MetaLeft", "Alt"},
@@ -146,7 +158,7 @@ func DefaultConfig() AppConfig {
 			MarginY:           100,
 			Animation:         "fade",
 			AnimationDuration: 0.25,
-			Style:             "lowprofile",
+			Style:             "",
 		},
 		Layout: LayoutSettings{
 			ShowIcon:       true,
@@ -155,8 +167,8 @@ func DefaultConfig() AppConfig {
 			IconAlignment:  "flex-end",
 		},
 		Color: ColorSettings{
-			Color:          "#ffffff",
-			SecondaryColor: "#1a1a1a",
+			Color:          "",
+			SecondaryColor: "",
 			UseGradient:    true,
 		},
 		Modifier: ModifierSettings{
@@ -167,8 +179,8 @@ func DefaultConfig() AppConfig {
 			BorderColor:    "#000000",
 		},
 		Text: TextSettings{
-			Size:      32,
-			Color:     "#000000",
+			Size:      0,
+			Color:     "",
 			Caps:      "capitalize",
 			Variant:   "text-short",
 			Alignment: AlignCenter,
@@ -176,8 +188,8 @@ func DefaultConfig() AppConfig {
 		Border: BorderSettings{
 			Enabled: true,
 			Width:   2,
-			Color:   "#1a1a1a",
-			Radius:  0.5,
+			Color:   "",
+			Radius:  0,
 		},
 		Background: BackgroundSettings{
 			Enabled: true,
@@ -196,7 +208,7 @@ func DefaultConfig() AppConfig {
 		},
 		TactileAudio: true,
 		SemanticSub:  true,
-		ThemePreset:  "liquid-glass",
+		ThemePreset:  "Liquid Glass",
 		Language:     "",
 	}
 }
@@ -256,8 +268,63 @@ func (s *Store) load() error {
 	if err := json.Unmarshal(data, &loaded); err != nil {
 		return err
 	}
+	if migrateLegacyConfig(&loaded) {
+		s.cfg = loaded
+		if migrated, err := json.MarshalIndent(s.cfg, "", "  "); err == nil {
+			_ = os.WriteFile(s.filePath, migrated, 0644)
+		}
+		return nil
+	}
 	s.cfg = loaded
 	return nil
+}
+
+// migrateLegacyConfig upgrades configuration written before version 2. Those
+// files always stored the old hard-coded Keyviz palette (white keycaps, black
+// text, 32 px type, low-profile shape) even when the user had picked a preset
+// theme. Treat values that still equal those old defaults as "inherit from the
+// theme" so an existing installation gets the same first impression as a new
+// one, without discarding genuine customizations.
+func migrateLegacyConfig(c *AppConfig) bool {
+	if c.Version >= configVersion {
+		return false
+	}
+
+	if c.Appearance.Style == "lowprofile" {
+		c.Appearance.Style = ""
+	}
+	if c.Text.Size == 32 {
+		c.Text.Size = 0
+	}
+	if strings.EqualFold(c.Text.Color, "#000000") {
+		c.Text.Color = ""
+	}
+	if strings.EqualFold(c.Color.Color, "#ffffff") {
+		c.Color.Color = ""
+	}
+	if strings.EqualFold(c.Color.SecondaryColor, "#1a1a1a") {
+		c.Color.SecondaryColor = ""
+	}
+	if c.Border.Radius == 0.5 {
+		c.Border.Radius = 0
+	}
+	if strings.EqualFold(c.Border.Color, "#1a1a1a") {
+		c.Border.Color = ""
+	}
+
+	// Canonicalize the legacy slug names so the settings picker can show a
+	// checkmark on the active preset.
+	switch strings.ToLower(strings.TrimSpace(c.ThemePreset)) {
+	case "", "liquid-glass":
+		c.ThemePreset = "Liquid Glass"
+	case "cupertino-pro":
+		c.ThemePreset = "MacBook Scissor"
+	case "braun-tactile":
+		c.ThemePreset = "Dieter Rams 1960"
+	}
+
+	c.Version = configVersion
+	return true
 }
 
 // Get returns an immutable copy of the active configuration.

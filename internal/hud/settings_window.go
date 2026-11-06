@@ -21,10 +21,10 @@ func strokeIcon(paths string) *ui.SVG {
 }
 
 var (
-	iconSettings = strokeIcon(`<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>`)
-	iconMonitor  = strokeIcon(`<rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/>`)
-	iconKeyboard = strokeIcon(`<rect width="20" height="16" x="2" y="4" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M7 16h10"/>`)
-	iconMouse    = strokeIcon(`<rect x="5" y="2" width="14" height="20" rx="7"/><path d="M12 6v4"/>`)
+	iconSettings    = strokeIcon(`<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>`)
+	iconMonitor     = strokeIcon(`<rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/>`)
+	iconKeyboard    = strokeIcon(`<rect width="20" height="16" x="2" y="4" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M7 16h10"/>`)
+	iconMouse       = strokeIcon(`<rect x="5" y="2" width="14" height="20" rx="7"/><path d="M12 6v4"/>`)
 	iconInfo        = strokeIcon(`<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>`)
 	iconReset       = strokeIcon(`<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>`)
 	iconSearch      = strokeIcon(`<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>`)
@@ -65,6 +65,60 @@ func themeDisplayName(name string) string {
 		}
 		return name
 	}
+}
+
+// physicalStyleName returns a Chinese-first name for a keycap physical model.
+func physicalStyleName(id string) string {
+	switch id {
+	case "minimal":
+		return "极简扁平"
+	case "laptop":
+		return "剪刀脚"
+	case "pbt":
+		return "PBT 机械"
+	case "glass":
+		return "拟物玻璃"
+	case "neon":
+		return "霓虹发光"
+	case "retro":
+		return "复古终端"
+	case "outline":
+		return "极简线框"
+	default:
+		return "矮轴物理"
+	}
+}
+
+// styleStageLabel describes whether the physical model is inherited or set.
+func styleStageLabel(cfg config.AppConfig, t theme.ThemeConfig) string {
+	if cfg.Appearance.Style == "" {
+		return physicalStyleName(effectiveStyle(t, cfg)) + " · 跟随主题"
+	}
+	return physicalStyleName(cfg.Appearance.Style)
+}
+
+// formatShortcut renders the real configured global hotkey rather than a
+// hard-coded "default" label that could contradict the saved configuration.
+func formatShortcut(tokens []string) string {
+	if len(tokens) == 0 {
+		return "Shift + F10"
+	}
+	out := make([]string, 0, len(tokens))
+	for _, raw := range tokens {
+		switch strings.ToLower(strings.TrimSpace(raw)) {
+		case "shiftleft", "shiftright", "shift":
+			out = append(out, "Shift")
+		case "controlleft", "controlright", "ctrl", "control":
+			out = append(out, "Ctrl")
+		case "altleft", "altright", "alt", "menu":
+			out = append(out, "Alt")
+		case "metaleft", "metaright", "win", "super", "cmd":
+			out = append(out, "Win")
+		default:
+			out = append(out, raw)
+		}
+	}
+	return strings.Join(out, " + ")
 }
 
 // Palette holds Cupertino / Apple Human Interface theme colors.
@@ -164,6 +218,7 @@ type SettingsController struct {
 	styleDropdownOpen     bool
 	colorDropdownOpen     bool
 	filterTab             string
+	previewNonce          int
 }
 
 // NewSettingsController creates a controller for the settings client window.
@@ -350,7 +405,7 @@ func (sc *SettingsController) render(c *ui.Context) {
 
 		// ───────────── RIGHT SCROLLABLE CONTENT (Direct children, proper scroll bounds) ─────────────
 		ui.Box(c.Key("main-content-area")).Grow(1).Background(p.canvas).Children(func() {
-			ui.Scroll(c.Key("settings-scroll-" + activeTab)).
+			ui.Scroll(c.Key("settings-scroll-"+activeTab)).
 				Fill().
 				Scrollbars(true).
 				Padding(24, 32, 48, 32).
@@ -434,7 +489,7 @@ func (sc *SettingsController) renderShowcaseStage(c *ui.Context, cfg config.AppC
 					ui.Box(c).Size(7, 7).Radius(3.5).Background(p.accent)
 					ui.Text(c, "按键效果实时展示台 (Live HUD Showcase)").FontSize(12.5).Bold().TextColor(p.text)
 				})
-				ui.Text(c, fmt.Sprintf("%s · %s", themeDisplayName(cfg.ThemePreset), cfg.Appearance.Style)).
+				ui.Text(c, fmt.Sprintf("%s · %s", themeDisplayName(cfg.ThemePreset), styleStageLabel(cfg, currentTheme))).
 					FontSize(11.5).
 					TextColor(p.muted)
 			})
@@ -453,7 +508,7 @@ func (sc *SettingsController) renderShowcaseStage(c *ui.Context, cfg config.AppC
 					ui.Row(c).Gap(24).AlignItems(ui.Center).Children(func() {
 						// Sample Chord 1: [ Ctrl ] + [ C ] -> [ 复制 Copy ]
 						sampleChord1 := engine.DisplayChord{
-							ID: "preview-1",
+							ID: fmt.Sprintf("preview-%d-1", sc.previewNonce),
 							Keys: []engine.KeyCap{
 								{Label: "Ctrl", IsModifier: true},
 								{Label: "C", IsModifier: false},
@@ -464,7 +519,7 @@ func (sc *SettingsController) renderShowcaseStage(c *ui.Context, cfg config.AppC
 
 						// Sample Chord 2: [ ⌘ Cmd ] + [ V ] -> [ 粘贴 Paste ]
 						sampleChord2 := engine.DisplayChord{
-							ID: "preview-2",
+							ID: fmt.Sprintf("preview-%d-2", sc.previewNonce),
 							Keys: []engine.KeyCap{
 								{Label: "⌘", IsModifier: true},
 								{Label: "V", IsModifier: false},
@@ -526,51 +581,54 @@ func (sc *SettingsController) renderGeneralTab(
 					Padding(4).
 					Shadow(0, 12, 32, 0, ui.RGBA(0, 0, 0, 0.50))
 
-				for _, th := range theme.AllThemes {
-					thConfig := th
-					displayName := themeDisplayName(thConfig.Name)
-					item := sel.Item(thConfig.Name).
-						Height(36).
-						PaddingX(10).
-						Gap(10).
-						Radius(6).
-						AlignItems(ui.Center)
+				ui.Scroll(c).MaxHeight(260).Children(func() {
+					for _, th := range theme.AllThemes {
+						thConfig := th
+						displayName := themeDisplayName(thConfig.Name)
+						item := sel.Item(thConfig.Name).
+							Height(36).
+							PaddingX(10).
+							Gap(10).
+							Radius(6).
+							AlignItems(ui.Center)
 
-					if item.Highlighted() {
-						item.Background(p.press)
-					} else if thConfig.Name == cfg.ThemePreset {
-						item.Background(p.hover)
-					}
-
-					item.Children(func() {
-						ui.Box(c).Size(22, 20).Radius(5).
-							Background(thConfig.KeyCapBackground).
-							Border(1.2, thConfig.KeyCapBorder).
-							Shadow(0, 2, 6, 0, ui.RGBA(0, 0, 0, 0.25)).
-							AlignItems(ui.Center).Justify(ui.Center).
-							Children(func() {
-								ui.Text(c, "⌘").FontSize(9.5).Bold().TextColor(thConfig.KeyCapTextColor)
-							})
-						ui.Text(c, displayName).FontSize(12.5).TextColor(p.text).Grow(1)
-						if thConfig.Name == cfg.ThemePreset {
-							ui.Text(c, "✓").FontSize(13).Bold().TextColor(p.accent)
+						if item.Highlighted() {
+							item.Background(p.press)
+						} else if thConfig.Name == cfg.ThemePreset {
+							item.Background(p.hover)
 						}
-					})
-				}
+
+						item.Children(func() {
+							ui.Box(c).Size(22, 20).Radius(5).
+								Background(thConfig.KeyCapBackground).
+								Border(1.2, thConfig.KeyCapBorder).
+								Shadow(0, 2, 6, 0, ui.RGBA(0, 0, 0, 0.25)).
+								AlignItems(ui.Center).Justify(ui.Center).
+								Children(func() {
+									ui.Text(c, "⌘").FontSize(9.5).Bold().TextColor(thConfig.KeyCapTextColor)
+								})
+							ui.Text(c, displayName).FontSize(12.5).TextColor(p.text).Grow(1)
+							if thConfig.Name == cfg.ThemePreset {
+								ui.Text(c, "✓").FontSize(13).Bold().TextColor(p.accent)
+							}
+						})
+					}
+				})
 			})
 
 			if sel.Trigger.Changed() {
 				th := theme.ThemeByName(themeChoice)
+				// Picking a preset means "give me that design", so theme-derived
+				// values return to inheritance instead of being frozen into the
+				// config as copies of today's colors.
 				sc.updateConfig(func(ac *config.AppConfig) {
-					ac.ThemePreset = themeChoice
-					ac.Appearance.Style = theme.DefaultStyleForTheme(themeChoice)
-					ac.Color.Color = theme.ColorToHex(th.KeyCapBackground)
-					ac.Color.SecondaryColor = theme.ColorToHex(th.KeyCapBorder)
-					ac.Text.Color = theme.ColorToHex(th.KeyCapTextColor)
-					ac.Border.Color = theme.ColorToHex(th.KeyCapBorder)
-					if th.KeyCapRadius > 0 {
-						ac.Border.Radius = float64(th.KeyCapRadius)
-					}
+					ac.ThemePreset = th.Name
+					ac.Appearance.Style = ""
+					ac.Color.Color = ""
+					ac.Color.SecondaryColor = ""
+					ac.Text.Color = ""
+					ac.Border.Color = ""
+					ac.Border.Radius = 0
 				})
 				if sc.vState != nil {
 					sc.vState.SetTheme(th)
@@ -626,9 +684,13 @@ func (sc *SettingsController) renderGeneralTab(
 				target := modes[selIdx]
 				sc.updateConfig(func(ac *config.AppConfig) { ac.General.Filter = target })
 				if sc.engine != nil {
-					if target == "none" {
+					switch target {
+					case "none":
 						sc.engine.SetFilterMode(engine.FilterAll)
-					} else {
+					case "custom":
+						sc.engine.SetFilterMode(engine.FilterCustom)
+						sc.engine.SetAllowedKeys(cfg.General.AllowedKeys)
+					default:
 						sc.engine.SetFilterMode(engine.FilterSmart)
 					}
 				}
@@ -685,24 +747,32 @@ func (sc *SettingsController) renderGeneralTab(
 			}
 		})
 
-		row("最大留存组数", "保留在屏幕上的最大按键组数 (2 至 12 组)", func() {
-			ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
-				if ui.Button(c.Key("hist-dec"), "−").Padding(4, 10).Radius(6).Clicked() && cfg.General.MaxHistory > 2 {
-					sc.updateConfig(func(ac *config.AppConfig) { ac.General.MaxHistory-- })
-				}
-				ui.Textf(c, "%d 组", cfg.General.MaxHistory).FontSize(13).Bold().TextColor(p.text)
-				if ui.Button(c.Key("hist-inc"), "+").Padding(4, 10).Radius(6).Clicked() && cfg.General.MaxHistory < 12 {
-					sc.updateConfig(func(ac *config.AppConfig) { ac.General.MaxHistory++ })
-				}
+		if cfg.General.ShowEventHistory {
+			row("最大留存组数", "保留在屏幕上的最大按键组数 (2 至 12 组)", func() {
+				ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+					if ui.Button(c.Key("hist-dec"), "−").Padding(4, 10).Radius(6).Clicked() && cfg.General.MaxHistory > 2 {
+						sc.updateConfig(func(ac *config.AppConfig) { ac.General.MaxHistory-- })
+					}
+					ui.Textf(c, "%d 组", cfg.General.MaxHistory).FontSize(13).Bold().TextColor(p.text)
+					if ui.Button(c.Key("hist-inc"), "+").Padding(4, 10).Radius(6).Clicked() && cfg.General.MaxHistory < 12 {
+						sc.updateConfig(func(ac *config.AppConfig) { ac.General.MaxHistory++ })
+					}
+				})
 			})
-		})
+		} else {
+			row("最大留存组数", "事件历史关闭时只显示当前一组按键，保持舞台干净", func() {
+				ui.Box(c).Padding(5, 10).Radius(6).Background(p.sidebar).Border(1, p.hairline).Children(func() {
+					ui.Text(c, "固定 1 组").FontSize(12.5).Bold().TextColor(p.muted)
+				})
+			})
+		}
 	})
 
 	// Group 5: Shortcuts & Feedback
 	group("快捷键与音效", func() {
 		row(i18n.T("toggle_shortcut"), i18n.T("toggle_shortcut_desc"), func() {
 			ui.Box(c).Background(p.sidebar).Border(1, p.hairline).Radius(6).Padding(6, 12).Children(func() {
-				ui.Text(c, i18n.T("default_shortcut")).Bold().FontSize(12.5).TextColor(p.text)
+				ui.Text(c, formatShortcut(cfg.General.ToggleShortcut)).Bold().FontSize(12.5).TextColor(p.text)
 			})
 		})
 
@@ -728,6 +798,7 @@ func (sc *SettingsController) renderAppearanceTab(
 	stacked func(label, desc string, control func()),
 ) {
 	ui.Text(c, i18n.T("appearance_title")).FontSize(20).Bold().TextColor(p.text)
+	sc.renderShowcaseStage(c, cfg, p)
 
 	// Group 1: Alignment & Position
 	group(i18n.T("alignment_title"), func() {
@@ -785,11 +856,21 @@ func (sc *SettingsController) renderAppearanceTab(
 		row("垂直边距 (Y)", "屏幕上下边缘留白", func() {
 			ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
 				if ui.Button(c.Key("my-dec"), "−10").Padding(4, 8).Radius(6).Clicked() && cfg.Appearance.MarginY > 0 {
-					sc.updateConfig(func(ac *config.AppConfig) { ac.Appearance.MarginY -= 10 })
+					sc.updateConfig(func(ac *config.AppConfig) {
+						ac.Appearance.MarginY -= 10
+						if sc.marginLinked {
+							ac.Appearance.MarginX = ac.Appearance.MarginY
+						}
+					})
 				}
 				ui.Textf(c, "%d px", cfg.Appearance.MarginY).FontSize(13).Bold().TextColor(p.text)
 				if ui.Button(c.Key("my-inc"), "+10").Padding(4, 8).Radius(6).Clicked() && cfg.Appearance.MarginY < 300 {
-					sc.updateConfig(func(ac *config.AppConfig) { ac.Appearance.MarginY += 10 })
+					sc.updateConfig(func(ac *config.AppConfig) {
+						ac.Appearance.MarginY += 10
+						if sc.marginLinked {
+							ac.Appearance.MarginX = ac.Appearance.MarginY
+						}
+					})
 				}
 			})
 		})
@@ -811,7 +892,50 @@ func (sc *SettingsController) renderAppearanceTab(
 				sc.updateConfig(func(ac *config.AppConfig) { ac.Appearance.Animation = chosen })
 			}
 		})
+
+		row("过渡时长", "按键入场与退场的速度；无动效时立即切换", func() {
+			ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+				if ui.Button(c.Key("anim-dur-dec"), "−50ms").Padding(4, 8).Radius(6).Clicked() && cfg.Appearance.AnimationDuration > 0.10 {
+					sc.updateConfig(func(ac *config.AppConfig) {
+						ac.Appearance.AnimationDuration = clampAnimDuration(ac.Appearance.AnimationDuration - 0.05)
+					})
+				}
+				ui.Textf(c, "%d ms", int(cfg.Appearance.AnimationDuration*1000)).
+					FontSize(13).Bold().TextColor(p.text)
+				if ui.Button(c.Key("anim-dur-inc"), "+50ms").Padding(4, 8).Radius(6).Clicked() && cfg.Appearance.AnimationDuration < 1.50 {
+					sc.updateConfig(func(ac *config.AppConfig) {
+						ac.Appearance.AnimationDuration = clampAnimDuration(ac.Appearance.AnimationDuration + 0.05)
+					})
+				}
+			})
+		})
+
+		row("预览重播", "在展示台中重新播放当前主题与动效，方便对比调参", func() {
+			if ui.Button(c.Key("anim-replay"), "▶ 重播预览").
+				Padding(5, 12).
+				Radius(6).
+				Background(p.accent).
+				TextColor(p.onAccent).
+				Bold().
+				Clicked() {
+				sc.previewNonce++
+				if sc.window != nil {
+					sc.window.Invalidate()
+				}
+			}
+		})
 	})
+}
+
+// clampAnimDuration keeps the animation duration in a useful, non-zero band.
+func clampAnimDuration(v float64) float64 {
+	if v < 0.05 {
+		return 0.05
+	}
+	if v > 2.0 {
+		return 2.0
+	}
+	return v
 }
 
 // renderKeycapTab mirrors Cue Keycap tab with full 14 color palettes and typography.
@@ -825,6 +949,7 @@ func (sc *SettingsController) renderKeycapTab(
 ) {
 	ui.Text(c, i18n.T("keycap_title")).FontSize(20).Bold().TextColor(p.text)
 	sc.renderShowcaseStage(c, cfg, p)
+	currentTheme := theme.ThemeByName(cfg.ThemePreset)
 
 	// Group 1: Physical Model (Floating Popover Web Dropdown with Preview)
 	group(i18n.T("keycap_model"), func() {
@@ -832,6 +957,7 @@ func (sc *SettingsController) renderKeycapTab(
 			id   string
 			name string
 		}{
+			{"", "跟随主题 (Theme Default)"},
 			{"lowprofile", "矮轴物理 (Low Profile)"},
 			{"minimal", "极简扁平 (Minimal Flat)"},
 			{"laptop", "剪刀脚 (Laptop Scissor)"},
@@ -842,10 +968,10 @@ func (sc *SettingsController) renderKeycapTab(
 			{"outline", "极简线框 (Wireframe Outline)"},
 		}
 
-		currentStyleName := "矮轴物理 (Low Profile)"
+		currentStyleName := physicalStyleName(effectiveStyle(currentTheme, cfg)) + " · 跟随主题"
 		styleChoice := cfg.Appearance.Style
 		for _, st := range styles {
-			if st.id == cfg.Appearance.Style {
+			if st.id == cfg.Appearance.Style && st.id != "" {
 				currentStyleName = st.name
 				break
 			}
@@ -862,7 +988,7 @@ func (sc *SettingsController) renderKeycapTab(
 				Border(1, p.hairline).
 				AlignItems(ui.Center).
 				Children(func() {
-					sc.renderStylePreviewIcon(c, cfg.Appearance.Style, p)
+					sc.renderStylePreviewIcon(c, effectiveStyle(currentTheme, cfg), p)
 					ui.Text(c, currentStyleName).FontSize(13).Bold().TextColor(p.text)
 					ui.Icon(c, iconChevronDown).Size(12, 12).TextColor(p.muted)
 				})
@@ -876,29 +1002,35 @@ func (sc *SettingsController) renderKeycapTab(
 					Padding(4).
 					Shadow(0, 12, 32, 0, ui.RGBA(0, 0, 0, 0.50))
 
-				for _, st := range styles {
-					styleItem := st
-					item := sel.Item(styleItem.id).
-						Height(36).
-						PaddingX(10).
-						Gap(10).
-						Radius(6).
-						AlignItems(ui.Center)
+				ui.Scroll(c).MaxHeight(260).Children(func() {
+					for _, st := range styles {
+						styleItem := st
+						item := sel.Item(styleItem.id).
+							Height(36).
+							PaddingX(10).
+							Gap(10).
+							Radius(6).
+							AlignItems(ui.Center)
 
-					if item.Highlighted() {
-						item.Background(p.press)
-					} else if styleItem.id == cfg.Appearance.Style {
-						item.Background(p.hover)
-					}
-
-					item.Children(func() {
-						sc.renderStylePreviewIcon(c, styleItem.id, p)
-						ui.Text(c, styleItem.name).FontSize(12.5).TextColor(p.text).Grow(1)
-						if styleItem.id == cfg.Appearance.Style {
-							ui.Text(c, "✓").FontSize(13).Bold().TextColor(p.accent)
+						if item.Highlighted() {
+							item.Background(p.press)
+						} else if styleItem.id == cfg.Appearance.Style {
+							item.Background(p.hover)
 						}
-					})
-				}
+
+						item.Children(func() {
+							previewStyle := styleItem.id
+							if previewStyle == "" {
+								previewStyle = effectiveStyle(currentTheme, cfg)
+							}
+							sc.renderStylePreviewIcon(c, previewStyle, p)
+							ui.Text(c, styleItem.name).FontSize(12.5).TextColor(p.text).Grow(1)
+							if styleItem.id == cfg.Appearance.Style {
+								ui.Text(c, "✓").FontSize(13).Bold().TextColor(p.accent)
+							}
+						})
+					}
+				})
 			})
 
 			if sel.Trigger.Changed() {
@@ -914,17 +1046,23 @@ func (sc *SettingsController) renderKeycapTab(
 
 	// Group 2: 14 Color Palettes (Floating Popover Web Dropdown with Preview)
 	group("预设色盘", func() {
-		currentSchemeName := "自定义配色"
+		// An empty palette means "inherit the theme". It is a first-class choice,
+		// not an unexplained "custom" state on a fresh installation.
+		paletteChoices := append([]ColorSchemePreset{{Name: "跟随主题 (Theme Default)"}}, MasterColorSchemes...)
+		currentSchemeName := "跟随主题 (Theme Default)"
 		paletteChoice := cfg.Color.Color
-		for _, sch := range MasterColorSchemes {
-			if strings.EqualFold(cfg.Color.Color, sch.Primary) {
-				currentSchemeName = sch.Name
-				paletteChoice = sch.Primary
-				break
+		if cfg.Color.Color != "" {
+			currentSchemeName = "自定义配色"
+			for _, sch := range MasterColorSchemes {
+				if strings.EqualFold(cfg.Color.Color, sch.Primary) {
+					currentSchemeName = sch.Name
+					paletteChoice = sch.Primary
+					break
+				}
 			}
 		}
 
-		row("键帽配色", "快速应用 Cue 经典配色方案", func() {
+		row("键帽配色", "快速应用经典配色方案，或跟随当前主题", func() {
 			sel := ui.SelectBase(c, &paletteChoice)
 			sel.Trigger.
 				Height(36).
@@ -936,12 +1074,12 @@ func (sc *SettingsController) renderKeycapTab(
 				AlignItems(ui.Center).
 				Children(func() {
 					ui.Box(c).Size(22, 20).Radius(5).
-						Background(parseHexSafe(cfg.Color.Color, p.accent)).
-						Border(1.2, parseHexSafe(cfg.Color.SecondaryColor, p.hairline)).
+						Background(parseHexSafe(cfg.Color.Color, currentTheme.KeyCapBackground)).
+						Border(1.2, parseHexSafe(cfg.Color.SecondaryColor, currentTheme.KeyCapBorder)).
 						Shadow(0, 2, 6, 0, ui.RGBA(0, 0, 0, 0.25)).
 						AlignItems(ui.Center).Justify(ui.Center).
 						Children(func() {
-							ui.Text(c, "A").FontSize(9.5).Bold().TextColor(parseHexSafe(cfg.Text.Color, p.text))
+							ui.Text(c, "A").FontSize(9.5).Bold().TextColor(parseHexSafe(cfg.Text.Color, currentTheme.KeyCapTextColor))
 						})
 					ui.Text(c, currentSchemeName).FontSize(13).Bold().TextColor(p.text)
 					ui.Icon(c, iconChevronDown).Size(12, 12).TextColor(p.muted)
@@ -956,49 +1094,70 @@ func (sc *SettingsController) renderKeycapTab(
 					Padding(4).
 					Shadow(0, 12, 32, 0, ui.RGBA(0, 0, 0, 0.50))
 
-				for _, scheme := range MasterColorSchemes {
-					sch := scheme
-					isSelected := strings.EqualFold(cfg.Color.Color, sch.Primary)
-					item := sel.Item(sch.Primary).
-						Height(36).
-						PaddingX(10).
-						Gap(10).
-						Radius(6).
-						AlignItems(ui.Center)
+				ui.Scroll(c).MaxHeight(260).Children(func() {
+					for _, choice := range paletteChoices {
+						sch := choice
+						isInherit := sch.Primary == ""
+						isSelected := (isInherit && cfg.Color.Color == "") ||
+							(!isInherit && strings.EqualFold(cfg.Color.Color, sch.Primary))
+						item := sel.Item(sch.Primary).
+							Height(36).
+							PaddingX(10).
+							Gap(10).
+							Radius(6).
+							AlignItems(ui.Center)
 
-					if item.Highlighted() {
-						item.Background(p.press)
-					} else if isSelected {
-						item.Background(p.hover)
-					}
-
-					item.Children(func() {
-						ui.Box(c).Size(22, 20).Radius(5).
-							Background(parseHexSafe(sch.Primary, p.accent)).
-							Border(1.2, parseHexSafe(sch.Secondary, p.hairline)).
-							Shadow(0, 2, 6, 0, ui.RGBA(0, 0, 0, 0.25)).
-							AlignItems(ui.Center).Justify(ui.Center).
-							Children(func() {
-								ui.Text(c, "A").FontSize(9.5).Bold().TextColor(parseHexSafe(sch.Text, p.text))
-							})
-						ui.Text(c, sch.Name).FontSize(12.5).TextColor(p.text).Grow(1)
-						if isSelected {
-							ui.Text(c, "✓").FontSize(13).Bold().TextColor(p.accent)
+						if item.Highlighted() {
+							item.Background(p.press)
+						} else if isSelected {
+							item.Background(p.hover)
 						}
-					})
-				}
+
+						item.Children(func() {
+							bgPreview := currentTheme.KeyCapBackground
+							borderPreview := currentTheme.KeyCapBorder
+							textPreview := currentTheme.KeyCapTextColor
+							if !isInherit {
+								bgPreview = parseHexSafe(sch.Primary, bgPreview)
+								borderPreview = parseHexSafe(sch.Secondary, borderPreview)
+								textPreview = parseHexSafe(sch.Text, textPreview)
+							}
+							ui.Box(c).Size(22, 20).Radius(5).
+								Background(bgPreview).
+								Border(1.2, borderPreview).
+								Shadow(0, 2, 6, 0, ui.RGBA(0, 0, 0, 0.25)).
+								AlignItems(ui.Center).Justify(ui.Center).
+								Children(func() {
+									ui.Text(c, "A").FontSize(9.5).Bold().TextColor(textPreview)
+								})
+							ui.Text(c, sch.Name).FontSize(12.5).TextColor(p.text).Grow(1)
+							if isSelected {
+								ui.Text(c, "✓").FontSize(13).Bold().TextColor(p.accent)
+							}
+						})
+					}
+				})
 			})
 
 			if sel.Trigger.Changed() {
-				for _, sch := range MasterColorSchemes {
-					if strings.EqualFold(sch.Primary, paletteChoice) {
-						sc.updateConfig(func(ac *config.AppConfig) {
-							ac.Color.Color = sch.Primary
-							ac.Color.SecondaryColor = sch.Secondary
-							ac.Text.Color = sch.Text
-							ac.Border.Color = sch.Secondary
-						})
-						break
+				if paletteChoice == "" {
+					sc.updateConfig(func(ac *config.AppConfig) {
+						ac.Color.Color = ""
+						ac.Color.SecondaryColor = ""
+						ac.Text.Color = ""
+						ac.Border.Color = ""
+					})
+				} else {
+					for _, sch := range MasterColorSchemes {
+						if strings.EqualFold(sch.Primary, paletteChoice) {
+							sc.updateConfig(func(ac *config.AppConfig) {
+								ac.Color.Color = sch.Primary
+								ac.Color.SecondaryColor = sch.Secondary
+								ac.Text.Color = sch.Text
+								ac.Border.Color = sch.Secondary
+							})
+							break
+						}
 					}
 				}
 				if sc.window != nil {
@@ -1041,13 +1200,19 @@ func (sc *SettingsController) renderKeycapTab(
 		})
 
 		row("字体字号", "键帽正文字符的硬件渲染大小", func() {
+			size := cfg.Text.Size
+			suffix := ""
+			if size <= 0 {
+				size = int(effectiveFontSize(currentTheme, cfg) + 0.5)
+				suffix = " · 主题"
+			}
 			ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
-				if ui.Button(c.Key("ts-dec"), "−").Padding(4, 8).Radius(6).Clicked() && cfg.Text.Size > 16 {
-					sc.updateConfig(func(ac *config.AppConfig) { ac.Text.Size -= 2 })
+				if ui.Button(c.Key("ts-dec"), "−").Padding(4, 8).Radius(6).Clicked() && size > 16 {
+					sc.updateConfig(func(ac *config.AppConfig) { ac.Text.Size = size - 2 })
 				}
-				ui.Textf(c, "%d px", cfg.Text.Size).FontSize(13).Bold().TextColor(p.text)
-				if ui.Button(c.Key("ts-inc"), "+").Padding(4, 8).Radius(6).Clicked() && cfg.Text.Size < 56 {
-					sc.updateConfig(func(ac *config.AppConfig) { ac.Text.Size += 2 })
+				ui.Textf(c, "%d px%s", size, suffix).FontSize(13).Bold().TextColor(p.text)
+				if ui.Button(c.Key("ts-inc"), "+").Padding(4, 8).Radius(6).Clicked() && size < 56 {
+					sc.updateConfig(func(ac *config.AppConfig) { ac.Text.Size = size + 2 })
 				}
 			})
 		})
@@ -1106,13 +1271,19 @@ func (sc *SettingsController) renderKeycapTab(
 		})
 
 		row("倒角圆角", "键帽四角的物理弧度半径", func() {
+			radius := cfg.Border.Radius
+			suffix := ""
+			if radius <= 0 {
+				radius = float64(effectiveRadius(currentTheme, cfg))
+				suffix = " · 主题"
+			}
 			ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
-				if ui.Button(c.Key("br-dec"), "−").Padding(4, 8).Radius(6).Clicked() && cfg.Border.Radius > 2 {
-					sc.updateConfig(func(ac *config.AppConfig) { ac.Border.Radius -= 2 })
+				if ui.Button(c.Key("br-dec"), "−").Padding(4, 8).Radius(6).Clicked() && radius > 2 {
+					sc.updateConfig(func(ac *config.AppConfig) { ac.Border.Radius = radius - 2 })
 				}
-				ui.Textf(c, "%.1f px", cfg.Border.Radius).FontSize(13).Bold().TextColor(p.text)
-				if ui.Button(c.Key("br-inc"), "+").Padding(4, 8).Radius(6).Clicked() && cfg.Border.Radius < 24 {
-					sc.updateConfig(func(ac *config.AppConfig) { ac.Border.Radius += 2 })
+				ui.Textf(c, "%.1f px%s", radius, suffix).FontSize(13).Bold().TextColor(p.text)
+				if ui.Button(c.Key("br-inc"), "+").Padding(4, 8).Radius(6).Clicked() && radius < 24 {
+					sc.updateConfig(func(ac *config.AppConfig) { ac.Border.Radius = radius + 2 })
 				}
 			})
 		})
@@ -1287,7 +1458,7 @@ func (sc *SettingsController) renderAlignmentSelector(c *ui.Context, cfg config.
 					for _, item := range rowAligns {
 						al := item.align
 						isSelected := cfg.Appearance.Alignment == al
-						btn := ui.ButtonBase(c.Key("tactile-align-" + string(al))).
+						btn := ui.ButtonBase(c.Key("tactile-align-"+string(al))).
 							Size(34, 30).
 							Radius(6).
 							AlignItems(ui.Center).
@@ -1323,57 +1494,51 @@ func (sc *SettingsController) renderAlignmentSelector(c *ui.Context, cfg config.
 			}
 		})
 
-		// 2. Realistic Apple Studio Display Desktop Computer Mockup
-		ui.Column(c.Key("align-mac-computer-stage")).AlignItems(ui.Center).Children(func() {
-			// Monitor Display Unit (Retina Display + Bezel + FaceTime Camera)
-			ui.Column(c.Key("mac-display-unit")).
-				Width(192).
-				Height(124).
-				Radius(10).
-				Background(ui.Hex("#18181b")). // Sleek anodized aluminum outer frame
-				Border(1.5, ui.Hex("#3f3f46")).
-				Padding(5).
-				Shadow(0, 10, 24, 0, ui.RGBA(0, 0, 0, 0.45)).
+		// 2. Minimalist & Clear Display Screen Mockup
+		ui.Column(c.Key("align-computer-stage")).AlignItems(ui.Center).Children(func() {
+			// Monitor Display Unit
+			ui.Column(c.Key("display-unit")).
+				Width(196).
+				Height(126).
+				Radius(8).
+				Background(ui.Hex("#131417")).
+				Border(1.2, ui.Hex("#2e3038")).
+				Padding(4).
+				Shadow(0, 8, 20, 0, ui.RGBA(0, 0, 0, 0.40)).
 				Children(func() {
-					// Top Bezel with Centered FaceTime HD Camera Dot
-					ui.Row(c).Fill().Height(6).Justify(ui.Center).AlignItems(ui.Center).Children(func() {
-						ui.Box(c).Size(4, 4).Radius(2).Background(ui.Hex("#09090b")).Border(0.6, ui.Hex("#27272a"))
-					})
-
-					// Inner Screen: macOS Sonoma / Monterey Desktop Wallpaper Canvas
-					ui.Column(c.Key("mac-desktop-screen")).
+					// Inner Screen: Display Canvas
+					ui.Column(c.Key("desktop-screen")).
 						Fill().
-						Radius(6).
-						Background(ui.Hex("#0f172a")). // Midnight Sonoma gradient base
+						Radius(5).
+						Background(ui.Hex("#0b0d14")).
 						Padding(3).
-						Gap(2).
+						Gap(3).
 						Children(func() {
-							// Top macOS Glass Menu Bar
-							ui.Row(c).Height(7).Fill().PaddingX(4).AlignItems(ui.Center).Justify(ui.SpaceBetween).
-								Background(ui.RGBA(255, 255, 255, 0.12)).
-								Radius(2).
+							// Clean Screen Header Bar (Clearly indicating Display / Screen status)
+							ui.Row(c.Key("screen-header")).
+								Height(16).
+								Fill().
+								PaddingX(6).
+								AlignItems(ui.Center).
+								Justify(ui.SpaceBetween).
+								Background(ui.RGBA(255, 255, 255, 0.05)).
+								Radius(3).
 								Children(func() {
-									// Apple logo dot + menus
-									ui.Row(c).Gap(2).AlignItems(ui.Center).Children(func() {
-										ui.Box(c).Size(3, 3).Radius(1.5).Background(ui.Hex("#ffffff"))
-										ui.Box(c).Size(8, 2).Radius(1).Background(ui.RGBA(255, 255, 255, 0.4))
-										ui.Box(c).Size(6, 2).Radius(1).Background(ui.RGBA(255, 255, 255, 0.4))
+									ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
+										ui.Icon(c, iconMonitor).Size(10, 10).TextColor(p.muted)
+										ui.Text(c, "主显示器").FontSize(8.5).Bold().TextColor(p.text)
 									})
-									// Status icons dots
-									ui.Row(c).Gap(2).AlignItems(ui.Center).Children(func() {
-										ui.Box(c).Size(3, 2).Radius(0.5).Background(ui.RGBA(255, 255, 255, 0.5))
-										ui.Box(c).Size(4, 2).Radius(0.5).Background(ui.RGBA(255, 255, 255, 0.5))
-									})
+									ui.Text(c, "100%").FontSize(7.5).TextColor(p.muted)
 								})
 
 							// Interactive 3x3 Desktop Grid Matrix
-							ui.Column(c.Key("mac-desktop-grid")).Fill().Gap(2).Children(func() {
+							ui.Column(c.Key("desktop-grid")).Fill().Gap(2).Children(func() {
 								for r, rowAligns := range items {
-									ui.Row(c.Key(fmt.Sprintf("mac-screen-row-%d", r))).Fill().Gap(2).Children(func() {
+									ui.Row(c.Key(fmt.Sprintf("screen-row-%d", r))).Fill().Gap(2).Children(func() {
 										for _, item := range rowAligns {
 											al := item.align
 											isSelected := cfg.Appearance.Alignment == al
-											cell := ui.ButtonBase(c.Key("mac-screen-cell-" + string(al))).
+											cell := ui.ButtonBase(c.Key("screen-cell-" + string(al))).
 												Grow(1).
 												Fill().
 												Radius(3).
@@ -1382,30 +1547,28 @@ func (sc *SettingsController) renderAlignmentSelector(c *ui.Context, cfg config.
 												FocusRing(false)
 
 											if isSelected {
-												cell.Background(p.accent.Alpha(0.28))
-												cell.Border(1.2, p.accent)
+												cell.Background(p.accent.Alpha(0.22))
+												cell.Border(1.0, p.accent)
 											} else if cell.Hovered() {
-												cell.Background(ui.RGBA(255, 255, 255, 0.12))
+												cell.Background(ui.RGBA(255, 255, 255, 0.08))
 											} else {
 												cell.Background(ui.Transparent)
 											}
 
 											cell.Children(func() {
 												if isSelected {
-													// Illuminated Cue HUD Pill on macOS Desktop
+													// Crisp illuminated Keyviz HUD position pill
 													ui.Row(c).
-														Padding(1, 4).
+														Padding(2, 6).
 														Radius(3).
 														Background(p.accent).
-														Shadow(0, 2, 6, 0, p.accent.Alpha(0.6)).
+														Shadow(0, 2, 6, 0, p.accent.Alpha(0.5)).
 														AlignItems(ui.Center).
-														Gap(2).
 														Children(func() {
-															ui.Text(c, "⌘").FontSize(7.5).Bold().TextColor(p.onAccent)
-															ui.Text(c, "HUD").FontSize(7.5).Bold().TextColor(p.onAccent)
+															ui.Text(c, "HUD").FontSize(8).Bold().TextColor(p.onAccent)
 														})
 												} else {
-													ui.Box(c).Size(3, 3).Radius(1.5).Background(ui.RGBA(255, 255, 255, 0.25))
+													ui.Box(c).Size(3, 3).Radius(1.5).Background(ui.RGBA(255, 255, 255, 0.18))
 												}
 											})
 
@@ -1419,42 +1582,24 @@ func (sc *SettingsController) renderAlignmentSelector(c *ui.Context, cfg config.
 									})
 								}
 							})
-
-							// Bottom macOS Floating Glass Dock
-							ui.Row(c).Height(6).Fill().Justify(ui.Center).AlignItems(ui.Center).Children(func() {
-								ui.Row(c).
-									Height(5).
-									PaddingX(4).
-									Radius(2.5).
-									Background(ui.RGBA(255, 255, 255, 0.22)).
-									Border(0.5, ui.RGBA(255, 255, 255, 0.35)).
-									Gap(3).
-									AlignItems(ui.Center).
-									Children(func() {
-										ui.Box(c).Size(3, 3).Radius(1).Background(ui.Hex("#38bdf8")) // Finder
-										ui.Box(c).Size(3, 3).Radius(1).Background(ui.Hex("#f43f5e")) // Safari
-										ui.Box(c).Size(3, 3).Radius(1).Background(ui.Hex("#ec4899")) // Music
-										ui.Box(c).Size(3, 3).Radius(1).Background(ui.Hex("#10b981")) // Terminal
-									})
-							})
 						})
 				})
 
-			// Aluminum Display Stand: Neck
-			ui.Box(c.Key("mac-stand-neck")).
-				Width(28).
-				Height(14).
-				Background(ui.Hex("#71717a")). // Brushed aluminum neck
-				Border(0.8, ui.Hex("#52525b"))
+			// Minimalist Display Stand: Neck
+			ui.Box(c.Key("stand-neck")).
+				Width(24).
+				Height(12).
+				Background(ui.Hex("#3f3f46")).
+				Border(0.8, ui.Hex("#27272a"))
 
-			// Aluminum Display Stand: Weighted Desktop Base Plate with Shadow
-			ui.Box(c.Key("mac-stand-base")).
-				Width(76).
-				Height(4).
+			// Minimalist Display Stand: Sleek Base Plate
+			ui.Box(c.Key("stand-base")).
+				Width(68).
+				Height(3.5).
 				Radius(2).
-				Background(ui.Hex("#a1a1aa")). // Sleek metallic base foot
-				Border(0.8, ui.Hex("#71717a")).
-				Shadow(0, 4, 8, 0, ui.RGBA(0, 0, 0, 0.35))
+				Background(ui.Hex("#52525b")).
+				Border(0.8, ui.Hex("#3f3f46")).
+				Shadow(0, 3, 6, 0, ui.RGBA(0, 0, 0, 0.30))
 		})
 	})
 }
@@ -1577,18 +1722,12 @@ func (sc *SettingsController) renderResetConfirmDialog(c *ui.Context, p palette)
 							Bold().
 							Clicked() {
 							sc.showResetConfirm = false
+							// One source of truth: restore DefaultConfig and let the
+							// central apply path re-sync engine, theme, and overlay.
 							sc.updateConfig(func(ac *config.AppConfig) {
 								*ac = config.DefaultConfig()
 							})
-							if sc.vState != nil {
-								sc.vState.SetTheme(theme.ThemeLiquidGlass)
-							}
-							if sc.engine != nil {
-								sc.engine.SetFilterMode(engine.FilterSmart)
-								sc.engine.SetSoundActive(false)
-								sc.engine.SetThemeName("Liquid Glass")
-								sc.engine.SetWordGrouping(false)
-							}
+							sc.previewNonce++
 							if sc.window != nil {
 								sc.window.Invalidate()
 							}
@@ -1621,6 +1760,9 @@ func (sc *SettingsController) toggleAllowedKey(key string) {
 			ac.General.AllowedKeys = rem
 		} else {
 			ac.General.AllowedKeys = append(ac.General.AllowedKeys, key)
+		}
+		if sc.engine != nil {
+			sc.engine.SetAllowedKeys(ac.General.AllowedKeys)
 		}
 	})
 	if sc.window != nil {
@@ -1726,16 +1868,36 @@ func (sc *SettingsController) renderCustomFilterModal(c *ui.Context, cfg config.
 							if ui.Button(c.Key("filter-all-btn"), "全选").Padding(4, 9).Radius(6).Background(p.sidebar).TextColor(p.text).FontSize(11).Clicked() {
 								allCommon := append(append([]string{}, allAlpha...), allMods...)
 								allCommon = append(allCommon, "Enter", "Space", "Backspace", "Tab", "Esc", "Insert", "Delete", "Home", "End", "PageUp", "PageDown", "Up", "Down", "Left", "Right", "Left Click", "Right Click", "Middle Click", "Drag", "Scroll Up", "Scroll Down")
-								sc.updateConfig(func(ac *config.AppConfig) { ac.General.AllowedKeys = allCommon })
+								sc.updateConfig(func(ac *config.AppConfig) {
+									ac.General.AllowedKeys = allCommon
+									if sc.engine != nil {
+										sc.engine.SetAllowedKeys(ac.General.AllowedKeys)
+									}
+								})
 							}
 							if ui.Button(c.Key("filter-clear-btn"), "清空").Padding(4, 9).Radius(6).Background(p.sidebar).TextColor(p.text).FontSize(11).Clicked() {
-								sc.updateConfig(func(ac *config.AppConfig) { ac.General.AllowedKeys = []string{} })
+								sc.updateConfig(func(ac *config.AppConfig) {
+									ac.General.AllowedKeys = []string{}
+									if sc.engine != nil {
+										sc.engine.SetAllowedKeys(ac.General.AllowedKeys)
+									}
+								})
 							}
 							if ui.Button(c.Key("filter-mods-btn"), "仅修饰键").Padding(4, 9).Radius(6).Background(p.sidebar).TextColor(p.text).FontSize(11).Clicked() {
-								sc.updateConfig(func(ac *config.AppConfig) { ac.General.AllowedKeys = allMods })
+								sc.updateConfig(func(ac *config.AppConfig) {
+									ac.General.AllowedKeys = allMods
+									if sc.engine != nil {
+										sc.engine.SetAllowedKeys(ac.General.AllowedKeys)
+									}
+								})
 							}
 							if ui.Button(c.Key("filter-alpha-btn"), "字母与数字").Padding(4, 9).Radius(6).Background(p.sidebar).TextColor(p.text).FontSize(11).Clicked() {
-								sc.updateConfig(func(ac *config.AppConfig) { ac.General.AllowedKeys = allAlpha })
+								sc.updateConfig(func(ac *config.AppConfig) {
+									ac.General.AllowedKeys = allAlpha
+									if sc.engine != nil {
+										sc.engine.SetAllowedKeys(ac.General.AllowedKeys)
+									}
+								})
 							}
 						})
 					})

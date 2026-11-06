@@ -3,9 +3,10 @@ package main
 import (
 	"log"
 	"runtime"
-	"sync"
 	"strings"
+	"sync"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"github.com/egoist/mygo"
@@ -18,6 +19,7 @@ import (
 	"github.com/yviscool/cue/internal/hud"
 	"github.com/yviscool/cue/internal/i18n"
 	"github.com/yviscool/cue/internal/semantic"
+	"github.com/yviscool/cue/internal/theme"
 )
 
 type app struct {
@@ -182,7 +184,6 @@ func (a *app) ready() {
 	_ = mygo.App.Dock.SetIcon(assets.AppIconPNG)
 
 	a.vState = hud.NewViewState()
-	a.vState.SetConfig(cfg)
 	a.player = acoustic.NewPlayer()
 	a.matcher = semantic.NewDefaultMatcher()
 
@@ -194,25 +195,22 @@ func (a *app) ready() {
 		}
 	})
 
-	initFilter := engine.FilterSmart
-	if cfg.General.Filter == "none" {
-		initFilter = engine.FilterAll
-	}
-
 	a.eng = engine.NewEngine(
-		engine.WithFilterMode(initFilter),
+		engine.WithFilterMode(filterModeFor(cfg.General.Filter)),
+		engine.WithAllowedKeys(cfg.General.AllowedKeys),
 		engine.WithSoundPlayer(soundAdapter),
 		engine.WithSoundActive(cfg.TactileAudio),
 		engine.WithMatcher(a.matcher),
 		engine.WithThemeName(cfg.ThemePreset),
 		engine.WithShowMouseClicks(cfg.Mouse.ShowClicks),
 		engine.WithDragThreshold(cfg.General.DragThreshold),
+		engine.WithWordGrouping(cfg.General.WordGrouping),
+		engine.WithLingerShort(time.Duration(cfg.General.LingerDurationMs)*time.Millisecond),
+		engine.WithMaxChords(historyChordLimit(cfg)),
 	)
-	a.eng.Start()
-	log.Println("4. Engine started")
+	a.applyConfig(cfg)
 
 	a.settings = hud.NewSettingsController(a.store, a.eng, a.vState)
-	log.Println("5. Settings controller created")
 
 	a.hudVisible = true
 
@@ -249,15 +247,10 @@ func (a *app) ready() {
 	disableWindowBorder(a.hudWindow.NativeHandle())
 	a.hudWindow.ShowInactive()
 
-	// 2. Dynamic config change listener for 9-grid repositioning and live styling
+	// 2. Dynamic config change listener: one apply path keeps the HUD, engine,
+	// theme, and overlay geometry in sync with every settings change.
 	a.store.OnChange(func(updated config.AppConfig) {
-		a.vState.SetConfig(updated)
-		a.repositionHUD(updated)
-		if a.eng != nil {
-			a.eng.SetShowMouseClicks(updated.Mouse.ShowClicks)
-			a.eng.SetDragThreshold(updated.General.DragThreshold)
-			a.eng.SetSoundActive(updated.TactileAudio)
-		}
+		a.applyConfig(updated)
 		if a.hudWindow != nil {
 			a.hudWindow.Update(func() {})
 		}
@@ -318,6 +311,57 @@ func (a *app) ready() {
 			a.tray.Destroy()
 		}
 	})
+}
+
+// filterModeFor maps the persisted filter policy to the engine mode.
+func filterModeFor(filter string) engine.FilterMode {
+	switch filter {
+	case "none":
+		return engine.FilterAll
+	case "custom":
+		return engine.FilterCustom
+	default:
+		return engine.FilterSmart
+	}
+}
+
+// historyChordLimit turns "show event history" into a chord limit. With history
+// off the HUD is intentionally a single-cue stage: one current chord at a time.
+func historyChordLimit(cfg config.AppConfig) int {
+	if !cfg.General.ShowEventHistory {
+		return 1
+	}
+	n := cfg.General.MaxHistory
+	if n < 2 {
+		n = 2
+	}
+	if n > 12 {
+		n = 12
+	}
+	return n
+}
+
+// applyConfig is the single synchronization point for live configuration. Both
+// startup and Store.OnChange use it, so a setting cannot be wired to one path
+// and silently ignored by the other.
+func (a *app) applyConfig(cfg config.AppConfig) {
+	if a.vState != nil {
+		a.vState.SetTheme(theme.ThemeByName(cfg.ThemePreset))
+		a.vState.SetConfig(cfg)
+	}
+	a.repositionHUD(cfg)
+	if a.eng == nil {
+		return
+	}
+	a.eng.SetFilterMode(filterModeFor(cfg.General.Filter))
+	a.eng.SetAllowedKeys(cfg.General.AllowedKeys)
+	a.eng.SetShowMouseClicks(cfg.Mouse.ShowClicks)
+	a.eng.SetDragThreshold(cfg.General.DragThreshold)
+	a.eng.SetSoundActive(cfg.TactileAudio)
+	a.eng.SetWordGrouping(cfg.General.WordGrouping)
+	a.eng.SetLingerDuration(cfg.General.LingerDurationMs)
+	a.eng.SetMaxChords(historyChordLimit(cfg))
+	a.eng.SetThemeName(cfg.ThemePreset)
 }
 
 func (a *app) repositionHUD(cfg config.AppConfig) {
@@ -386,11 +430,11 @@ func disableWindowBorder(hwnd uintptr) {
 		gwlExStyle := uintptr(uint32(n20))
 
 		style, _, _ := procGetWindowLong.Call(hwnd, gwlStyle)
-		newStyle := style &^ uintptr(wsBorder | wsThickFrame | wsCaption)
+		newStyle := style &^ uintptr(wsBorder|wsThickFrame|wsCaption)
 		procSetWindowLong.Call(hwnd, gwlStyle, newStyle)
 
 		exStyle, _, _ := procGetWindowLong.Call(hwnd, gwlExStyle)
-		newExStyle := exStyle | uintptr(wsExLayered | wsExTransparent | wsExToolWindow | wsExTopmost | wsExNoActivate)
+		newExStyle := exStyle | uintptr(wsExLayered|wsExTransparent|wsExToolWindow|wsExTopmost|wsExNoActivate)
 		procSetWindowLong.Call(hwnd, gwlExStyle, newExStyle)
 
 		procSetWindowPos.Call(hwnd, 0, 0, 0, 0, 0, uintptr(swpNoMove|swpNoSize|swpNoZOrder|swpFrameChanged))

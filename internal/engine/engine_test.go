@@ -411,6 +411,114 @@ func TestFilterModes(t *testing.T) {
 	if len(engAll.Chords()) != 2 {
 		t.Errorf("FilterAll should visualize all keystrokes, expected 2, got %d", len(engAll.Chords()))
 	}
+
+	// 4. FilterCustom
+	engCustom := NewEngine(
+		WithFilterMode(FilterCustom),
+		WithAllowedKeys([]string{"Ctrl", "A", "Enter", "Left Click"}),
+	)
+	defer engCustom.Stop()
+
+	// Allowed primary key: displayed
+	engCustom.HandleEvent(hook.InputEvent{Type: hook.EventKeyDown, KeyName: "A"})
+	if len(engCustom.Chords()) != 1 {
+		t.Errorf("FilterCustom should allow 'A', got %d chords", len(engCustom.Chords()))
+	}
+
+	// Denied primary key: filtered
+	engCustom.HandleEvent(hook.InputEvent{Type: hook.EventKeyDown, KeyName: "B"})
+	if len(engCustom.Chords()) != 1 {
+		t.Errorf("FilterCustom should ignore 'B', got %d chords", len(engCustom.Chords()))
+	}
+
+	// Allowed shortcut with modifier: displayed
+	engCustom.HandleEvent(hook.InputEvent{Type: hook.EventKeyDown, KeyName: "C", Modifiers: hook.ModCtrl})
+	if len(engCustom.Chords()) != 2 {
+		t.Errorf("FilterCustom should allow Ctrl+C because Ctrl is allowed, got %d chords", len(engCustom.Chords()))
+	}
+
+	// Allowed mouse click: displayed
+	engCustom.HandleEvent(hook.InputEvent{Type: hook.EventMouseDown, Button: hook.ButtonLeft})
+	if len(engCustom.Chords()) != 3 {
+		t.Errorf("FilterCustom should allow Left Click, got %d chords", len(engCustom.Chords()))
+	}
+
+	// Denied mouse click: filtered
+	engCustom.HandleEvent(hook.InputEvent{Type: hook.EventMouseDown, Button: hook.ButtonRight})
+	if len(engCustom.Chords()) != 3 {
+		t.Errorf("FilterCustom should block Right Click, got %d chords", len(engCustom.Chords()))
+	}
+
+	// Update AllowedKeys dynamically
+	engCustom.SetAllowedKeys([]string{"Ctrl", "A", "B", "Enter", "Left Click"})
+	engCustom.HandleEvent(hook.InputEvent{Type: hook.EventKeyDown, KeyName: "B"})
+	if len(engCustom.Chords()) != 4 {
+		t.Errorf("FilterCustom should now allow 'B' after SetAllowedKeys, got %d chords", len(engCustom.Chords()))
+	}
+}
+
+func TestSetLingerDurationControlsExpiry(t *testing.T) {
+	eng := NewEngine(WithFilterMode(FilterAll))
+	defer eng.Stop()
+
+	eng.SetLingerDuration(1200)
+	now := time.Now()
+	eng.HandleEvent(hook.InputEvent{Type: hook.EventKeyDown, KeyName: "A", Timestamp: now})
+
+	chords := eng.Chords()
+	if len(chords) != 1 {
+		t.Fatalf("expected 1 chord, got %d", len(chords))
+	}
+	life := chords[0].ExpiresAt.Sub(chords[0].Timestamp)
+	if life < 1100*time.Millisecond || life > 1400*time.Millisecond {
+		t.Errorf("expected ~1.2s linger, got %v", life)
+	}
+}
+
+func TestSetMaxChordsTrimsHistory(t *testing.T) {
+	eng := NewEngine(WithFilterMode(FilterAll))
+	defer eng.Stop()
+
+	eng.SetMaxChords(2)
+	now := time.Now()
+	for i, key := range []string{"A", "B", "C", "D"} {
+		eng.HandleEvent(hook.InputEvent{Type: hook.EventKeyDown, KeyName: key, Timestamp: now.Add(time.Duration(i) * 10 * time.Millisecond)})
+	}
+
+	chords := eng.Chords()
+	if len(chords) != 2 {
+		t.Fatalf("expected 2 chords after cap, got %d", len(chords))
+	}
+	if chords[0].Keys[0].Label != "C" || chords[1].Keys[0].Label != "D" {
+		t.Errorf("expected newest chords C,D; got %s,%s", chords[0].Keys[0].Label, chords[1].Keys[0].Label)
+	}
+}
+
+func TestDecayRetiresStaleMouseFeedback(t *testing.T) {
+	eng := NewEngine(WithShowMouseClicks(true))
+	defer eng.Stop()
+
+	now := time.Now()
+	eng.HandleEvent(hook.InputEvent{Type: hook.EventMouseDown, Button: hook.ButtonLeft, X: 100, Y: 100, Timestamp: now})
+	eng.HandleEvent(hook.InputEvent{Type: hook.EventMouseUp, Button: hook.ButtonLeft, X: 100, Y: 100, Timestamp: now.Add(40 * time.Millisecond)})
+
+	if eng.State().MouseState.Timestamp.IsZero() {
+		t.Fatal("expected mouse feedback timestamp after click")
+	}
+
+	// Before the retirement window it remains visible for the exit animation.
+	eng.DecayCheck(now.Add(200 * time.Millisecond))
+	if eng.State().MouseState.Timestamp.IsZero() {
+		t.Fatal("mouse feedback retired too early")
+	}
+
+	// After ~320 ms the frame must be cleared, otherwise the ring/indicator
+	// stays frozen on screen until the next unrelated input.
+	eng.DecayCheck(now.Add(500 * time.Millisecond))
+	st := eng.State().MouseState
+	if !st.Timestamp.IsZero() || st.Button != hook.ButtonNone || st.Wheel != 0 || st.Active {
+		t.Errorf("stale mouse feedback was not retired: %+v", st)
+	}
 }
 
 func TestPrivacyMasking(t *testing.T) {

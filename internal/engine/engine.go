@@ -26,18 +26,19 @@ type Engine struct {
 	mu sync.RWMutex
 
 	// Active configuration
-	filterMode      FilterMode
-	decayInterval   time.Duration
-	streakThreshold time.Duration
-	lingerShort     time.Duration
-	lingerLong      time.Duration
-	maxChords       int
-	soundPlayer     SoundPlayer
-	soundActive     bool
-	matcher         semantic.Matcher
-	appContext      string
-	themeName       string
-	showMouseClicks bool
+	filterMode       FilterMode
+	allowedKeys      map[string]bool // normalized set of allowed keys for FilterCustom mode
+	decayInterval    time.Duration
+	streakThreshold  time.Duration
+	lingerShort      time.Duration
+	lingerLong       time.Duration
+	maxChords        int
+	soundPlayer      SoundPlayer
+	soundActive      bool
+	matcher          semantic.Matcher
+	appContext       string
+	themeName        string
+	showMouseClicks  bool
 	dragThreshold    int
 	wordGrouping     bool
 	wordBreakPending bool
@@ -74,6 +75,19 @@ type Option func(*Engine)
 func WithFilterMode(m FilterMode) Option {
 	return func(e *Engine) {
 		e.filterMode = m
+	}
+}
+
+// WithAllowedKeys sets the initial whitelist of allowed keys for FilterCustom mode.
+func WithAllowedKeys(keys []string) Option {
+	return func(e *Engine) {
+		e.allowedKeys = make(map[string]bool, len(keys))
+		for _, k := range keys {
+			norm := normalizeAllowedKey(k)
+			if norm != "" {
+				e.allowedKeys[norm] = true
+			}
+		}
 	}
 }
 
@@ -192,6 +206,7 @@ func NewEngine(opts ...Option) *Engine {
 		showMouseClicks: false,
 		dragThreshold:   50,
 		heldKeys:        make(map[string]bool),
+		allowedKeys:     make(map[string]bool),
 		stopCh:          make(chan struct{}),
 	}
 
@@ -222,6 +237,56 @@ func (e *Engine) SetWordGrouping(grouping bool) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.wordGrouping = grouping
+	e.emitStateLocked()
+}
+
+// SetLingerDuration applies the configured on-screen lifetime in milliseconds.
+// Short keys use the configured duration; chords with a semantic action stay a
+// little longer so viewers have time to read the intent.
+func (e *Engine) SetLingerDuration(ms int) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if ms <= 0 {
+		ms = int(defaultLingerShort / time.Millisecond)
+	}
+	if ms < 300 {
+		ms = 300
+	}
+	if ms > 15000 {
+		ms = 15000
+	}
+	e.lingerShort = time.Duration(ms) * time.Millisecond
+	e.lingerLong = e.lingerShort + 700*time.Millisecond
+	if e.lingerLong > 20*time.Second {
+		e.lingerLong = 20 * time.Second
+	}
+	e.emitStateLocked()
+}
+
+// SetMaxChords caps how many chord clusters stay on screen at once.
+func (e *Engine) SetMaxChords(n int) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if n < 1 {
+		n = 1
+	}
+	if n > 20 {
+		n = 20
+	}
+	e.maxChords = n
+	if len(e.chords) > n {
+		e.chords = e.chords[len(e.chords)-n:]
+		if len(e.chords) == 0 {
+			e.lastChordKey = ""
+			e.lastChordMods = hook.ModNone
+		} else {
+			last := e.chords[len(e.chords)-1]
+			if len(last.Keys) > 0 {
+				e.lastChordKey = last.Keys[len(last.Keys)-1].Label
+			}
+			e.lastChordMods = extractModifiers(last)
+		}
+	}
 	e.emitStateLocked()
 }
 
@@ -277,37 +342,52 @@ func (e *Engine) decayLoop() {
 }
 
 // DecayCheck evaluates all on-screen chords against current time and prunes expired ones.
-// Returns the number of removed chords.
+// It also retires stale mouse feedback so click rings and wheel indicators do not stay
+// frozen on screen after the user stops interacting. Returns the number of removed chords.
 func (e *Engine) DecayCheck(now time.Time) int {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	if len(e.chords) == 0 {
-		return 0
-	}
-
 	removed := 0
-	active := e.chords[:0]
-	for _, chord := range e.chords {
-		if now.After(chord.ExpiresAt) {
-			removed++
-		} else {
-			active = append(active, chord)
+	if len(e.chords) > 0 {
+		active := e.chords[:0]
+		for _, chord := range e.chords {
+			if now.After(chord.ExpiresAt) {
+				removed++
+			} else {
+				active = append(active, chord)
+			}
+		}
+		if removed > 0 {
+			e.chords = active
+			if len(e.chords) == 0 {
+				e.lastChordKey = ""
+				e.lastChordMods = hook.ModNone
+			} else {
+				last := e.chords[len(e.chords)-1]
+				if len(last.Keys) > 0 {
+					e.lastChordKey = last.Keys[len(last.Keys)-1].Label
+				}
+				e.lastChordMods = extractModifiers(last)
+			}
 		}
 	}
 
-	if removed > 0 {
-		e.chords = active
-		if len(e.chords) == 0 {
-			e.lastChordKey = ""
-			e.lastChordMods = hook.ModNone
-		} else {
-			last := e.chords[len(e.chords)-1]
-			if len(last.Keys) > 0 {
-				e.lastChordKey = last.Keys[len(last.Keys)-1].Label
-			}
-			e.lastChordMods = extractModifiers(last)
-		}
+	// Mouse feedback is time-based: a click ring lives ~220 ms and the button/wheel
+	// indicator ~260 ms. Without this cleanup the last frame would remain painted
+	// until the next input event, leaving a permanently stuck ring or scroll arrow.
+	mouseRetired := false
+	if !e.mouseState.Timestamp.IsZero() && !e.mouseState.Active &&
+		now.Sub(e.mouseState.Timestamp) > 320*time.Millisecond {
+		e.mouseState.Active = false
+		e.mouseState.Dragging = false
+		e.mouseState.Wheel = 0
+		e.mouseState.Button = hook.ButtonNone
+		e.mouseState.Timestamp = time.Time{}
+		mouseRetired = true
+	}
+
+	if removed > 0 || mouseRetired {
 		e.emitStateLocked()
 	}
 
@@ -371,6 +451,9 @@ func (e *Engine) handleKeyDown(ev hook.InputEvent) {
 
 	// Filter checks
 	if e.filterMode == FilterSilent {
+		return
+	}
+	if e.filterMode == FilterCustom && !e.isCustomAllowedLocked(ev.KeyName, ev.VKCode, mods) {
 		return
 	}
 
@@ -697,7 +780,15 @@ func (e *Engine) handleMouseEvent(ev hook.InputEvent) {
 			if mods.IsEmpty() {
 				mods = e.activeModifiersFromHeld()
 			}
-			if e.showMouseClicks || (mods != hook.ModNone && e.filterMode != FilterSilent) {
+			allowed := false
+			if e.filterMode == FilterSilent {
+				allowed = false
+			} else if e.filterMode == FilterCustom {
+				allowed = e.isCustomAllowedLocked(btnName, 0, mods)
+			} else if e.showMouseClicks || mods != hook.ModNone {
+				allowed = true
+			}
+			if allowed {
 				e.pushChordLocked(now, mods, btnName, true)
 			}
 		}
@@ -730,7 +821,15 @@ func (e *Engine) handleMouseEvent(ev hook.InputEvent) {
 				if mods.IsEmpty() {
 					mods = e.activeModifiersFromHeld()
 				}
-				if e.showMouseClicks || (mods != hook.ModNone && e.filterMode != FilterSilent) {
+				allowed := false
+				if e.filterMode == FilterSilent {
+					allowed = false
+				} else if e.filterMode == FilterCustom {
+					allowed = e.isCustomAllowedLocked("Drag", 0, mods)
+				} else if e.showMouseClicks || mods != hook.ModNone {
+					allowed = true
+				}
+				if allowed {
 					e.pushChordLocked(now, mods, "Drag", true)
 				}
 			}
@@ -749,7 +848,15 @@ func (e *Engine) handleMouseEvent(ev hook.InputEvent) {
 		if mods.IsEmpty() {
 			mods = e.activeModifiersFromHeld()
 		}
-		if e.showMouseClicks || (mods != hook.ModNone && e.filterMode != FilterSilent) {
+		allowed := false
+		if e.filterMode == FilterSilent {
+			allowed = false
+		} else if e.filterMode == FilterCustom {
+			allowed = e.isCustomAllowedLocked(wheelKey, 0, mods)
+		} else if e.showMouseClicks || mods != hook.ModNone {
+			allowed = true
+		}
+		if allowed {
 			e.pushChordLocked(now, mods, wheelKey, false)
 		}
 	}
@@ -846,6 +953,106 @@ func (e *Engine) FilterMode() FilterMode {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 	return e.filterMode
+}
+
+// SetAllowedKeys updates the allowed keys whitelist for FilterCustom mode.
+func (e *Engine) SetAllowedKeys(keys []string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.allowedKeys = make(map[string]bool, len(keys))
+	for _, k := range keys {
+		norm := normalizeAllowedKey(k)
+		if norm != "" {
+			e.allowedKeys[norm] = true
+		}
+	}
+	e.emitStateLocked()
+}
+
+// AllowedKeys returns a list of active allowed keys in FilterCustom mode.
+func (e *Engine) AllowedKeys() []string {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	out := make([]string, 0, len(e.allowedKeys))
+	for k := range e.allowedKeys {
+		out = append(out, k)
+	}
+	return out
+}
+
+// normalizeAllowedKey maps varying key label aliases to a consistent key token.
+func normalizeAllowedKey(name string) string {
+	s := strings.ToLower(strings.TrimSpace(name))
+	switch s {
+	case "controlleft", "controlright", "ctrl", "control", "lctrl", "rctrl":
+		return "ctrl"
+	case "shiftleft", "shiftright", "shift", "lshift", "rshift":
+		return "shift"
+	case "alt", "altleft", "altright", "menu", "lalt", "ralt":
+		return "alt"
+	case "metaleft", "metaright", "win", "windows", "super", "cmd", "command":
+		return "win"
+	case "left click", "left", "mouseleft":
+		return "left click"
+	case "right click", "right", "mouseright":
+		return "right click"
+	case "middle click", "middle", "mousemiddle":
+		return "middle click"
+	case "scroll up", "scrollup", "wheelup":
+		return "scroll up"
+	case "scroll down", "scrolldown", "wheeldown":
+		return "scroll down"
+	case "drag", "mousedrag":
+		return "drag"
+	case "return", "enter", "↵":
+		return "enter"
+	case "escape", "esc":
+		return "esc"
+	case "space", "␣":
+		return "space"
+	case "backspace", "⌫", "bksp":
+		return "backspace"
+	case "tab", "⇥":
+		return "tab"
+	default:
+		return s
+	}
+}
+
+// isCustomAllowedLocked checks whether the given key/modifier/action is allowed by allowedKeys in FilterCustom mode.
+func (e *Engine) isCustomAllowedLocked(keyName string, vkCode uint32, mods hook.Modifiers) bool {
+	if len(e.allowedKeys) == 0 {
+		return false
+	}
+	// 1. Check if any held modifier is allowed
+	if mods.HasCtrl() && e.allowedKeys["ctrl"] {
+		return true
+	}
+	if mods.HasShift() && e.allowedKeys["shift"] {
+		return true
+	}
+	if mods.HasAlt() && e.allowedKeys["alt"] {
+		return true
+	}
+	if mods.HasSuper() && e.allowedKeys["win"] {
+		return true
+	}
+	// 2. Check primary key name
+	norm := normalizeAllowedKey(keyName)
+	if e.allowedKeys[norm] {
+		return true
+	}
+	if e.allowedKeys[strings.ToLower(strings.TrimSpace(keyName))] {
+		return true
+	}
+	// 3. Check modifier by keyName if pressing modifier itself
+	modKey := normalizeModifier(keyName)
+	if modKey == "ctrl" || modKey == "shift" || modKey == "alt" || modKey == "win" {
+		if e.allowedKeys[modKey] {
+			return true
+		}
+	}
+	return false
 }
 
 // SetSoundActive toggles acoustic feedback and emits updated UIState.
