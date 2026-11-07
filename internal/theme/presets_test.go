@@ -10,6 +10,7 @@ func TestAllThemesCompleteness(t *testing.T) {
 		"MacBook Scissor",
 		"Dieter Rams 1960",
 		"Cyberpunk Neon",
+		"Azure Pulse",
 		"Classic Mechanical",
 		"IBM Model M 1984",
 		"Minimal Chalk",

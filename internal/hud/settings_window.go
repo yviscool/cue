@@ -41,6 +41,7 @@ var themeNameKeys = map[string]string{
 	"macbook scissor":       "theme_macbook_scissor",
 	"dieter rams 1960":      "theme_dieter_rams",
 	"cyberpunk neon":        "theme_cyberpunk_neon",
+	"azure pulse":           "theme_azure_pulse",
 	"classic mechanical":    "theme_classic_mechanical",
 	"ibm model m 1984":      "theme_ibm_model_m",
 	"minimal chalk":         "theme_minimal_chalk",
@@ -1668,6 +1669,12 @@ func (sc *SettingsController) renderMouseTab(
 					sc.updateConfig(func(ac *config.AppConfig) { ac.Mouse.Size += 10 })
 				}
 			})
+		})
+
+		row(i18n.T("ui_row_mouse_opacity"), i18n.T("ui_row_mouse_opacity_desc"), func() {
+			sc.renderPercentSlider(c, "mouse-opacity", cfg.Mouse.EffectiveOpacity(), config.MinOpacity*100, func(next float64) {
+				sc.updateConfig(func(ac *config.AppConfig) { ac.Mouse.Opacity = next })
+			}, p)
 		})
 	})
 

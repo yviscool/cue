@@ -236,6 +236,43 @@ var (
 		MouseRippleColor:      rgba(6, 182, 212, 200),
 	}
 
+	// ThemeAzurePulse is the all-blue sibling of Cyberpunk Neon. It keeps the
+	// same luminous navy keycap plate and the same azure used for the letter
+	// keys, but paints the modifier keys in that identical azure instead of
+	// violet, and carries the blue through to the action subtitle and streak
+	// badge. Requested for people who like the neon look but read a purple Ctrl
+	// as a second, unrelated accent colour.
+	ThemeAzurePulse = ThemeConfig{
+		Name:                  "Azure Pulse",
+		DisplayName:           "深蓝脉冲 (Azure Pulse)",
+		Description:           "统一冰蓝键帽：修饰键与字母键同为深空蓝荧光，深蓝底板一体化配色。",
+		DefaultStyle:          "neon",
+		TravelDepth:           0.0,
+		HeldPhysics:           HeldPulse,
+		AcousticProfile:       "click",
+		SpringBounce:          0.28,
+		SpringDurationScale:   0.90,
+		WindowBackground:      rgba(8, 12, 22, 235),
+		WindowCorner:          16,
+		KeyCapBackground:      rgba(14, 20, 40, 245),
+		KeyCapBorder:          rgba(6, 182, 212, 225),
+		KeyCapHeldBackground:  rgba(14, 165, 233, 205),
+		KeyCapHeldBorder:      rgba(125, 211, 252, 255),
+		KeyCapTextColor:       rgba(34, 211, 238, 255),
+		KeyCapFontSize:        20,
+		KeyCapRadius:          12.5,
+		KeyCapShadowSpread:    10,
+		ModCapBackground:      rgba(12, 18, 38, 242),
+		ModCapBorder:          rgba(6, 182, 212, 225),
+		ModCapTextColor:       rgba(34, 211, 238, 255),
+		SubtitleBackground:    rgba(10, 18, 34, 242),
+		SubtitleTextColor:     rgba(56, 189, 248, 255),
+		SubtitleFontSize:      12,
+		StreakBadgeBackground: rgba(14, 165, 233, 245),
+		StreakBadgeTextColor:  rgba(255, 255, 255, 255),
+		MouseRippleColor:      rgba(56, 189, 248, 205),
+	}
+
 	ThemeClassicMechanical = ThemeConfig{
 		Name:                  "Classic Mechanical",
 		DisplayName:           "复古机械 (Classic Mechanical)",
@@ -676,6 +713,7 @@ var AllThemes = []ThemeConfig{
 	ThemeMacBookScissor,
 	ThemeDieterRams,
 	ThemeCyberpunkNeon,
+	ThemeAzurePulse,
 	ThemeClassicMechanical,
 	ThemeIBMModelM,
 	ThemeMinimalChalk,

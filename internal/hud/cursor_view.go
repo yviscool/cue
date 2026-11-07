@@ -98,6 +98,11 @@ func RenderMouseOverlay(c *ui.Context, state engine.MouseVisualState, cfg config
 		clickLinger = 180 * time.Millisecond
 	}
 
+	// Every layer below (ripple FX and the button indicator) is faded by the same
+	// multiplier so the mouse overlay reads as one object. It multiplies down the
+	// tree, so a child's own enter/exit fade still composes on top of it.
+	mouseOpacity := float32(cfg.Mouse.EffectiveOpacity())
+
 	now := time.Now()
 	clickAge := 999 * time.Second
 	if !state.Timestamp.IsZero() {
@@ -150,6 +155,7 @@ func RenderMouseOverlay(c *ui.Context, state engine.MouseVisualState, cfg config
 				Background(clickColor.Alpha(0.24)).
 				Border(2.0, clickColor).
 				Shadow(0, 0, 12, 0, clickColor.Alpha(0.65)).
+				Opacity(mouseOpacity).
 				Transition(ui.ElementTransition{
 					Animation: &ui.Animation{Spring: ui.SpringOptions{Duration: 200 * time.Millisecond, Bounce: 0.25}},
 					Enter:     &ui.Motion{Scale: 0.40, Opacity: 0.95},
@@ -166,6 +172,7 @@ func RenderMouseOverlay(c *ui.Context, state engine.MouseVisualState, cfg config
 				Radius(rippleSize/2).
 				Border(2.2, clickColor.Alpha(0.85)).
 				Shadow(0, 0, 16, 0, clickColor.Alpha(0.40)).
+				Opacity(mouseOpacity).
 				Transition(ui.ElementTransition{
 					Duration: 280 * time.Millisecond,
 					Ease:     ui.EaseOut,
@@ -183,6 +190,7 @@ func RenderMouseOverlay(c *ui.Context, state engine.MouseVisualState, cfg config
 				Radius(haloSize/2).
 				Border(1.4, clickColor.Alpha(0.45)).
 				Shadow(0, 0, 22, 0, clickColor.Alpha(0.25)).
+				Opacity(mouseOpacity).
 				Transition(ui.ElementTransition{
 					Duration: 340 * time.Millisecond,
 					Ease:     ui.EaseOut,
@@ -201,6 +209,7 @@ func RenderMouseOverlay(c *ui.Context, state engine.MouseVisualState, cfg config
 					Radius(echoSize/2).
 					Border(2.5, clickColor).
 					Shadow(0, 0, 18, 0, clickColor.Alpha(0.60)).
+					Opacity(mouseOpacity).
 					Transition(ui.ElementTransition{
 						Duration: 240 * time.Millisecond,
 						Ease:     ui.EaseOut,
@@ -223,6 +232,7 @@ func RenderMouseOverlay(c *ui.Context, state engine.MouseVisualState, cfg config
 				Radius(steadySize/2).
 				Border(borderWidth, ringColor.Alpha(0.70)).
 				Shadow(0, 0, 12, 0, ringColor.Alpha(0.35)).
+				Opacity(mouseOpacity).
 				Transition(ui.ElementTransition{
 					Duration: 180 * time.Millisecond,
 					Ease:     ui.EaseOut,
@@ -278,6 +288,7 @@ func RenderMouseOverlay(c *ui.Context, state engine.MouseVisualState, cfg config
 			Radius(boxRadius).
 			Border(1, ui.RGBA(255, 255, 255, 0.16)).
 			Shadow(0, 6, 20, 0, ui.RGBA(0, 0, 0, 0.50)).
+			Opacity(mouseOpacity).
 			AlignItems(ui.Center).
 			Justify(ui.Center)
 

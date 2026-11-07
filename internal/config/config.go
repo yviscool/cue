@@ -124,6 +124,28 @@ type MouseSettings struct {
 	IndicatorOffsetX int    `json:"indicatorOffsetX"` // default 50
 	IndicatorOffsetY int    `json:"indicatorOffsetY"` // default 50
 	ClickLingerMs    int    `json:"clickLingerMs"`    // default 180 (ms)
+
+	// Opacity is the mouse overlay's own alpha, independent of the keycap
+	// overlay: the cursor ring and button indicator sit under the pointer and
+	// often need to be fainter than the keycaps. Shares the Appearance opacity
+	// bounds so both sliders behave identically.
+	Opacity float64 `json:"opacity"` // 1.0 = fully opaque
+}
+
+// EffectiveOpacity returns the mouse overlay opacity clamped into the same
+// usable band as the keycap overlay, so a hand-edited config.json cannot make
+// the cursor ring invisible.
+func (m MouseSettings) EffectiveOpacity() float64 {
+	switch {
+	case m.Opacity <= 0:
+		return DefaultOpacity
+	case m.Opacity < MinOpacity:
+		return MinOpacity
+	case m.Opacity > MaxOpacity:
+		return MaxOpacity
+	default:
+		return m.Opacity
+	}
 }
 
 // CustomShortcut is a user-defined interpretation for a shortcut chord. App may
@@ -202,7 +224,8 @@ func (c AppConfig) EffectiveVolume() float64 {
 //	2 - theme-derived values inherit from the selected preset
 //	3 - context intelligence (semanticContext / showAppBadge / custom shortcuts)
 //	4 - presentation controls (keycap overlay opacity, keystroke volume)
-const configVersion = 4
+//	5 - mouse overlay opacity
+const configVersion = 5
 
 // DefaultConfig returns the official Cue defaults. Theme-derived values are left
 // empty/zero on purpose: the selected theme is the single source of truth for
@@ -279,6 +302,7 @@ func DefaultConfig() AppConfig {
 			IndicatorOffsetX: 50,
 			IndicatorOffsetY: 50,
 			ClickLingerMs:    180,
+			Opacity:          DefaultOpacity,
 		},
 		TactileAudio:    true,
 		AudioProfile:    "auto",
@@ -597,6 +621,17 @@ func migrateLegacyConfig(c *AppConfig) bool {
 			c.AudioVolume = DefaultAudioVolume
 		}
 		c.Version = 4
+		migrated = true
+	}
+
+	if c.Version < 5 {
+		// Version 5: the mouse overlay gained its own opacity control. The zero
+		// value means "unset" (the slider bottoms out at MinOpacity), so existing
+		// installs start fully opaque and keep their previous appearance.
+		if c.Mouse.Opacity <= 0 {
+			c.Mouse.Opacity = DefaultOpacity
+		}
+		c.Version = 5
 		migrated = true
 	}
 

@@ -324,6 +324,9 @@ func TestV4PresentationDefaults(t *testing.T) {
 	if got.EffectiveVolume() != 1.0 {
 		t.Errorf("effective volume should be unity gain, got %v", got.EffectiveVolume())
 	}
+	if got.Mouse.Opacity != DefaultOpacity {
+		t.Errorf("mouse opacity should default to %v, got %v", DefaultOpacity, got.Mouse.Opacity)
+	}
 	// Existing preferences survive the migration untouched.
 	if got.Appearance.MarginX != 120 || got.AudioProfile != "thock" {
 		t.Errorf("existing preferences were lost: %+v", got.Appearance)
@@ -360,6 +363,62 @@ func TestV4ExplicitPresentationValuesArePreserved(t *testing.T) {
 	}
 	if got.AudioVolume != 0.3 {
 		t.Errorf("explicit volume was overwritten: %v", got.AudioVolume)
+	}
+	// A v4 file predates the mouse overlay slider, so that key is absent.
+	if got.Mouse.Opacity != DefaultOpacity {
+		t.Errorf("mouse opacity should default to %v, got %v", DefaultOpacity, got.Mouse.Opacity)
+	}
+}
+
+// TestV5MouseOpacityPreserved checks the migration path for the mouse overlay
+// opacity slider: a config written by a v5 build keeps the user's chosen value
+// instead of being reset to fully opaque.
+func TestV5MouseOpacityPreserved(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "cue_cfg_v5_explicit")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	filePath := filepath.Join(tmpDir, "v5.json")
+	raw := `{
+  "version": 5,
+  "mouse": {"opacity": 0.35, "indicatorSize": 90}
+}`
+	if err := os.WriteFile(filePath, []byte(raw), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	store, err := NewStore(filePath)
+	if err != nil {
+		t.Fatalf("failed to load v5 store: %v", err)
+	}
+	got := store.Get()
+	if got.Mouse.Opacity != 0.35 {
+		t.Errorf("explicit mouse opacity was overwritten: %v", got.Mouse.Opacity)
+	}
+	if got.Mouse.IndicatorSize != 90 {
+		t.Errorf("unrelated mouse settings were lost: %v", got.Mouse.IndicatorSize)
+	}
+}
+
+func TestEffectiveMouseOpacityClamps(t *testing.T) {
+	cases := []struct {
+		in   float64
+		want float64
+	}{
+		{0, DefaultOpacity},    // unset or hand-edited to zero: never invisible
+		{-0.5, DefaultOpacity}, // nonsense
+		{0.02, MinOpacity},     // below the usable band
+		{0.4, 0.4},             // in range
+		{1, MaxOpacity},        // fully opaque
+		{3, MaxOpacity},        // nonsense
+	}
+	for _, tc := range cases {
+		got := MouseSettings{Opacity: tc.in}.EffectiveOpacity()
+		if got != tc.want {
+			t.Errorf("MouseSettings.EffectiveOpacity(%v) = %v, want %v", tc.in, got, tc.want)
+		}
 	}
 }
 
@@ -411,5 +470,8 @@ func TestDefaultConfigIsFullyOpaqueAndAudible(t *testing.T) {
 	}
 	if cfg.EffectiveVolume() != 1.0 {
 		t.Errorf("default volume should be unity gain, got %v", cfg.EffectiveVolume())
+	}
+	if cfg.Mouse.EffectiveOpacity() != 1.0 {
+		t.Errorf("default mouse opacity should be 1.0, got %v", cfg.Mouse.EffectiveOpacity())
 	}
 }
