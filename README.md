@@ -19,6 +19,19 @@
 
 ---
 
+## See it in motion
+
+<a href="assets/promo/cue-promo.mp4"><img src="assets/promo/hero-ctrl-c.png" alt="Cue rendering Ctrl+C as the word Copy over VS Code" width="100%" /></a>
+
+**[Watch the 50-second film &rarr;](assets/promo/cue-promo.mp4)** &nbsp;·&nbsp; five themed beats, one word typed across four palettes, every mouse gesture, and all nineteen presets in a row.
+
+| Two-stage sequences | Repeats count themselves | Left, right and wheel |
+|:---:|:---:|:---:|
+| <img src="assets/promo/sequence-ctrl-k.png" width="100%" /> | <img src="assets/promo/repeat-badge.png" width="100%" /> | <img src="assets/promo/mouse.png" width="100%" /> |
+| `Ctrl + K` `Ctrl + C` collapses into one cue | Three presses inside a second stack into `×3` | Every button and the wheel, colour-coded |
+
+---
+
 ## What is Cue?
 
 **Cue** is a modern, high-performance keystroke and gesture visualization tool built from scratch in **Pure Go (Zero CGO)** and powered directly by **Direct3D 11 GPU hardware acceleration**.

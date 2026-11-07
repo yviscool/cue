@@ -976,19 +976,30 @@ func renderStreakBadge(c *ui.Context, badgeId string, streak int, t theme.ThemeC
 		textColor = ui.Hex("#ffffff")
 	}
 
+	// The badge is drawn in cap-relative units so it keeps its proportions when
+	// the user scales the caps up: at the default 20 px it is exactly the size it
+	// has always been, and at 62 px it is no longer a speck stuck to the corner of
+	// a key it no longer matches. The curve is deliberately shallower than the
+	// cap's own, though — a badge that grew in lockstep with a 3x cap would
+	// swallow the letter it is anchored to.
+	badgeScale := 1 + (effectiveFontSize(t, cfg)/20-1)*0.3
+	if badgeScale < 1 {
+		badgeScale = 1
+	}
+
 	badge := ui.Box(c).
 		Key(fmt.Sprintf("%s-%d", badgeId, streak)).
 		Attach(ui.AnchorTopRight, ui.AnchorCenter).
 		Background(bg).
-		Radius(10).
-		PaddingX(6).
-		PaddingY(1.5).
-		MinWidth(18).
-		MinHeight(18).
+		Radius(10*badgeScale).
+		PaddingX(6*badgeScale).
+		PaddingY(1.5*badgeScale).
+		MinWidth(18*badgeScale).
+		MinHeight(18*badgeScale).
 		AlignItems(ui.Center).
 		Justify(ui.Center).
-		Border(1.2, ui.RGBA(255, 255, 255, 0.45)).
-		Shadow(0, 3, 8, 0, bg.Alpha(0.50))
+		Border(1.2*badgeScale, ui.RGBA(255, 255, 255, 0.45)).
+		Shadow(0, 3*badgeScale, 8*badgeScale, 0, bg.Alpha(0.50))
 
 	if cfg.Appearance.Animation != "none" {
 		badge = badge.Transition(ui.ElementTransition{
@@ -1000,7 +1011,7 @@ func renderStreakBadge(c *ui.Context, badgeId string, streak int, t theme.ThemeC
 
 	badge.Children(func() {
 		ui.Textf(c, "×%d", streak).
-			FontSize(11).
+			FontSize(11 * badgeScale).
 			Bold().
 			SingleLine().
 			TextColor(textColor)
