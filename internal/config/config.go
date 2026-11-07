@@ -130,6 +130,7 @@ type AppConfig struct {
 
 	// Jobsian Enhanced Extensions (Optional enhancements)
 	TactileAudio bool   `json:"tactileAudio"` // Micro-acoustics ON/OFF
+	AudioProfile string `json:"audioProfile"` // "auto", "thock", "click", "scissor", "glass", "typewriter"
 	SemanticSub  bool   `json:"semanticSub"`  // Semantic Action subtitles ON/OFF
 	ThemePreset  string `json:"themePreset"`  // e.g. "Liquid Glass", "MacBook Scissor", "Dieter Rams 1960"
 	Language     string `json:"language"`     // "zh-CN", "en-US", "zh-TW", "ja-JP", or "" (system default)
@@ -215,6 +216,7 @@ func DefaultConfig() AppConfig {
 			ClickLingerMs:    180,
 		},
 		TactileAudio: true,
+		AudioProfile: "auto",
 		SemanticSub:  true,
 		ThemePreset:  "Liquid Glass",
 		Language:     "",

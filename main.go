@@ -374,6 +374,9 @@ func (a *app) ready() {
 		if a.eng != nil {
 			a.eng.Stop()
 		}
+		if a.player != nil {
+			a.player.Close()
+		}
 		if a.tray != nil {
 			a.tray.Destroy()
 		}
@@ -419,6 +422,16 @@ func (a *app) applyConfig(cfg config.AppConfig) {
 		a.vState.SetConfig(cfg)
 	}
 	a.repositionHUD(cfg)
+	if a.player != nil {
+		a.player.SetEnabled(cfg.TactileAudio)
+		prof := cfg.AudioProfile
+		if prof == "" {
+			prof = "auto"
+		}
+		a.player.SetProfile(acoustic.SoundProfile(prof))
+		thm := theme.ThemeByName(cfg.ThemePreset)
+		a.player.SetThemeProfile(thm.AcousticProfile)
+	}
 	if a.eng == nil {
 		return
 	}

@@ -274,7 +274,7 @@ var (
 		DefaultStyle:          "retro",
 		TravelDepth:           3.8,
 		HeldPhysics:           HeldSink,
-		AcousticProfile:       "thock",
+		AcousticProfile:       "typewriter",
 		SpringBounce:          0.26,
 		SpringDurationScale:   1.10,
 		WindowBackground:      rgba(235, 231, 224, 240),

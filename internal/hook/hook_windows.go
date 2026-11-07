@@ -191,8 +191,9 @@ type windowsHook struct {
 	hhkKbd      uintptr
 	hhkMouse    uintptr
 
-	pressedKeys map[uint32]bool
-	activeMods  Modifiers
+	pressedKeys       map[uint32]bool
+	activeMods        Modifiers
+	lastMouseMoveTime time.Time
 }
 
 // New creates a new Windows input Hook with default buffer size.
@@ -563,7 +564,19 @@ func (h *windowsHook) processKeyboard(wParam uintptr, vk uint32, scan uint32, al
 		IsKeyRepeat: isRepeat,
 	}
 
-	// Non-blocking dispatch to avoid hanging the Win32 hook procedure
+	// Priority dispatch for keyboard events: never drop keystrokes due to mouse event flooding.
+	select {
+	case h.events <- ev:
+		return
+	default:
+	}
+
+	// Channel is full; drain one stale event to ensure keystrokes are always recorded.
+	select {
+	case <-h.events:
+	default:
+	}
+
 	select {
 	case h.events <- ev:
 	default:
@@ -581,6 +594,34 @@ func (h *windowsHook) handleMouse(wParam uintptr, lParam uintptr) {
 
 // processMouse normalizes mouse movement, clicks, and wheel events.
 func (h *windowsHook) processMouse(wParam uintptr, x int32, y int32, mouseData uint32) {
+	// Fast path for high-frequency WM_MOUSEMOVE: throttle rate and avoid heavy modifier polling.
+	if wParam == WM_MOUSEMOVE {
+		now := time.Now()
+		h.mu.Lock()
+		if now.Sub(h.lastMouseMoveTime) < 8*time.Millisecond {
+			h.mu.Unlock()
+			return // Throttle mouse movement to ~125Hz max
+		}
+		h.lastMouseMoveTime = now
+		mods := h.activeMods
+		h.mu.Unlock()
+
+		ev := InputEvent{
+			Type:       EventMouseMove,
+			Timestamp:  now,
+			Button:     ButtonNone,
+			X:          int(x),
+			Y:          int(y),
+			WheelDelta: 0,
+			Modifiers:  mods,
+		}
+		select {
+		case h.events <- ev:
+		default:
+		}
+		return
+	}
+
 	mods := h.currentModifiers()
 
 	var evType EventType
@@ -627,10 +668,6 @@ func (h *windowsHook) processMouse(wParam uintptr, x int32, y int32, mouseData u
 			btn = ButtonExtra2
 		}
 
-	case WM_MOUSEMOVE:
-		evType = EventMouseMove
-		btn = ButtonNone
-
 	case WM_MOUSEWHEEL, WM_MOUSEHWHEEL:
 		evType = EventMouseWheel
 		btn = ButtonNone
@@ -650,7 +687,18 @@ func (h *windowsHook) processMouse(wParam uintptr, x int32, y int32, mouseData u
 		Modifiers:  mods,
 	}
 
-	// Non-blocking dispatch to avoid hanging the Win32 hook procedure
+	// Priority dispatch for mouse clicks/wheel
+	select {
+	case h.events <- ev:
+		return
+	default:
+	}
+
+	select {
+	case <-h.events:
+	default:
+	}
+
 	select {
 	case h.events <- ev:
 	default:

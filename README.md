@@ -51,8 +51,10 @@ Engineered for tech speakers, educators, live streamers, and screencasters, Cue 
   - Automatically identifies universal shortcuts and displays human-readable intent subtitles (e.g., `Ctrl + C` $\rightarrow$ *Copy*, `Alt + Tab` $\rightarrow$ *Switch Window*, `Ctrl + Z` $\rightarrow$ *Undo*).
 - 🔤 **Alphanumeric Word Grouping & Backspace Absorption**:
   - Seamlessly combines character strokes into readable words; pressing Backspace automatically trims trailing characters in real time.
-- 🔊 **Spatial Binaural Acoustic Stage**:
-  - Real-time synthesized mechanical "Thock" (modifiers) and crisp "Click" (regular keys) with virtual horizontal stereo panning.
+- 🔊 **Keystroke Audio & Spatial Panning (New in v1.2.0)**:
+  - Low-latency polyphonic mixing engine for rapid keystroke playback.
+  - 5 sound profiles: *Thock* (mechanical), *Click* (tactile), *Scissor* (laptop), *Glass* (chime), and *Typewriter*, supporting automatic theme matching and manual selection.
+  - Stereo panning based on physical key horizontal positions with micro-pitch dynamics.
 - 📍 **Dual-Mode 9-Grid Screen Positioning**:
   - Tactile 3×3 edge matrix paired with an interactive 16:10 desktop mini-map for pixel-perfect margin adjustments.
 - 🔒 **Privacy Shield**:

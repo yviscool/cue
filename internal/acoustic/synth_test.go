@@ -335,6 +335,7 @@ func TestKeyToPanMapping(t *testing.T) {
 
 func TestPlaySpatialSafety(t *testing.T) {
 	p := acoustic.NewPlayer()
+	defer p.Close()
 	keys := []string{"Tab", "A", "E", "Space", "L", "Enter"}
 
 	for _, k := range keys {
@@ -342,4 +343,62 @@ func TestPlaySpatialSafety(t *testing.T) {
 		p.PlaySpatial(acoustic.SoundThock, k)
 	}
 	p.Stop()
+}
+
+func TestPolyphonicRapidKeystrokes(t *testing.T) {
+	p := acoustic.NewPlayer()
+	defer p.Close()
+
+	// Simulate high-speed typing (rolling across A-S-D-F-Space-Enter at 200 WPM)
+	keys := []string{"A", "S", "D", "F", "G", "H", "J", "K", "L", "Space", "Enter"}
+	for i := 0; i < 3; i++ {
+		for _, k := range keys {
+			p.PlaySpatial(acoustic.SoundClick, k)
+			time.Sleep(2 * time.Millisecond)
+		}
+	}
+	time.Sleep(50 * time.Millisecond)
+}
+
+func TestSoundProfiles(t *testing.T) {
+	p := acoustic.NewPlayer()
+	defer p.Close()
+
+	profiles := []acoustic.SoundProfile{
+		acoustic.ProfileAuto,
+		acoustic.ProfileThock,
+		acoustic.ProfileClick,
+		acoustic.ProfileScissor,
+		acoustic.ProfileGlass,
+		acoustic.ProfileTypewriter,
+	}
+
+	for _, prof := range profiles {
+		p.SetProfile(prof)
+		if p.GetProfile() != prof {
+			t.Errorf("expected profile %q, got %q", prof, p.GetProfile())
+		}
+		p.SetThemeProfile("scissor")
+		p.PlaySpatial(acoustic.SoundThock, "ControlLeft")
+		p.PlaySpatial(acoustic.SoundClick, "A")
+	}
+
+	// Verify procedural synthesis non-empty outputs
+	concreteProfiles := []acoustic.SoundProfile{
+		acoustic.ProfileThock,
+		acoustic.ProfileClick,
+		acoustic.ProfileScissor,
+		acoustic.ProfileGlass,
+		acoustic.ProfileTypewriter,
+	}
+	for _, prof := range concreteProfiles {
+		samplesMod := acoustic.SynthesizeProfileStereoSamples(prof, acoustic.SoundThock, 0.0, 1.0)
+		if len(samplesMod) == 0 {
+			t.Errorf("empty samples for profile %s mod", prof)
+		}
+		samplesKey := acoustic.SynthesizeProfileStereoSamples(prof, acoustic.SoundClick, 0.30, 1.035)
+		if len(samplesKey) == 0 {
+			t.Errorf("empty samples for profile %s key", prof)
+		}
+	}
 }

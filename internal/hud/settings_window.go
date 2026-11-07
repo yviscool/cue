@@ -333,7 +333,7 @@ func (sc *SettingsController) render(c *ui.Context) {
 				}
 				ui.Column(c).Gap(2).Children(func() {
 					ui.Text(c, i18n.T("app_name")).Bold().FontSize(14.5).TextColor(p.text)
-					ui.Text(c, "v1.0 · Direct3D 11").FontSize(11).TextColor(p.muted)
+					ui.Text(c, "v1.2 · Direct3D 11").FontSize(11).TextColor(p.muted)
 				})
 			})
 
@@ -789,12 +789,97 @@ func (sc *SettingsController) renderGeneralTab(
 			})
 		})
 
-		row("机械音效", "敲击按键时播放轻微微动音效", func() {
+		row("按键音效", "敲击按键时播放反馈音效", func() {
 			on := cfg.TactileAudio
 			if ui.Switch(c.Key("toggle-tactile-audio"), &on).Changed() {
 				sc.updateConfig(func(ac *config.AppConfig) { ac.TactileAudio = on })
 			}
 		})
+
+		if cfg.TactileAudio {
+			row(i18n.T("sound_profile"), i18n.T("sound_profile_desc"), func() {
+				type soundOpt struct {
+					id    string
+					label string
+				}
+				options := []soundOpt{
+					{"auto", i18n.T("profile_auto")},
+					{"thock", i18n.T("profile_thock")},
+					{"click", i18n.T("profile_click")},
+					{"scissor", i18n.T("profile_scissor")},
+					{"glass", i18n.T("profile_glass")},
+					{"typewriter", i18n.T("profile_typewriter")},
+				}
+				curProf := cfg.AudioProfile
+				if curProf == "" {
+					curProf = "auto"
+				}
+				curLabel := i18n.T("profile_auto")
+				for _, opt := range options {
+					if opt.id == curProf {
+						curLabel = opt.label
+						break
+					}
+				}
+
+				selectedProf := curProf
+				sel := ui.SelectBase(c, &selectedProf)
+				sel.Trigger.
+					Height(32).
+					PaddingX(12).
+					Gap(8).
+					Radius(6).
+					Background(p.sidebar).
+					Border(1, p.hairline).
+					AlignItems(ui.Center).
+					Children(func() {
+						ui.Text(c, curLabel).FontSize(12.5).Bold().TextColor(p.text)
+						ui.Icon(c, iconChevronDown).Size(12, 12).TextColor(p.muted)
+					})
+
+				sel.Popup(func(panel ui.Element) {
+					panel.
+						Width(220).
+						Background(p.card).
+						Border(1, p.hairline).
+						Radius(8).
+						Padding(4).
+						Shadow(0, 10, 24, 0, ui.RGBA(0, 0, 0, 0.45))
+
+					for _, opt := range options {
+						itemOpt := opt
+						item := sel.Item(itemOpt.id).
+							Height(32).
+							PaddingX(10).
+							Gap(8).
+							Radius(6).
+							AlignItems(ui.Center)
+
+						if item.Highlighted() {
+							item.Background(p.press)
+						} else if itemOpt.id == curProf {
+							item.Background(p.hover)
+						}
+
+						item.Children(func() {
+							ui.Text(c, itemOpt.label).FontSize(12).TextColor(p.text).Grow(1)
+							if itemOpt.id == curProf {
+								ui.Text(c, "✓").FontSize(12).Bold().TextColor(p.accent)
+							}
+						})
+					}
+				})
+
+				if sel.Trigger.Changed() {
+					sc.updateConfig(func(ac *config.AppConfig) {
+						ac.AudioProfile = selectedProf
+					})
+					if sc.window != nil {
+						sc.window.Invalidate()
+					}
+				}
+			})
+		}
 	})
 }
 
