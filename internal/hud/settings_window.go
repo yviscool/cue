@@ -289,6 +289,37 @@ func (sc *SettingsController) updateConfig(fn func(*config.AppConfig)) {
 	sc.Invalidate()
 }
 
+// renderPercentSlider draws a percentage slider bound to a 0..1 configuration
+// fraction.
+//
+// The slider is stepped to 5% so dragging it writes config.json at most ~20
+// times instead of once per frame; Store.Update rewrites the file atomically on
+// every call, so an unstepped slider would hammer the disk. The readout is drawn
+// after the widget so it shows the value the user just dragged to.
+func (sc *SettingsController) renderPercentSlider(
+	c *ui.Context,
+	key string,
+	fraction, minPercent float64,
+	apply func(next float64),
+	p palette,
+) {
+	percent := fraction * 100
+	if percent < minPercent {
+		percent = minPercent
+	}
+	if percent > 100 {
+		percent = 100
+	}
+
+	ui.Row(c).AlignItems(ui.Center).Gap(10).Width(240).Children(func() {
+		slider := ui.Slider(c.Key(key), &percent, minPercent, 100).Step(5).Grow(1)
+		ui.Textf(c, "%.0f%%", percent).FontSize(12.5).Bold().TextColor(p.text).Width(44)
+		if slider.Changed() {
+			apply(percent / 100)
+		}
+	})
+}
+
 // SetContextSource installs a foreground-application snapshot source used by
 // the General tab's live "recognized application" preview.
 func (sc *SettingsController) SetContextSource(fn func() context.AppContext) {
@@ -835,6 +866,11 @@ func (sc *SettingsController) renderGeneralTab(
 		})
 
 		if cfg.TactileAudio {
+			row(i18n.T("ui_row_volume"), i18n.T("ui_row_volume_desc"), func() {
+				sc.renderPercentSlider(c, "audio-volume", cfg.EffectiveVolume(), 0, func(next float64) {
+					sc.updateConfig(func(ac *config.AppConfig) { ac.AudioVolume = next })
+				}, p)
+			})
 			row(i18n.T("sound_profile"), i18n.T("sound_profile_desc"), func() {
 				type soundOpt struct {
 					id    string
@@ -1008,7 +1044,16 @@ func (sc *SettingsController) renderAppearanceTab(
 		})
 	})
 
-	// Group 3: Transition Animations & Physics Toggle
+	// Group 3: Overlay Opacity
+	group(i18n.T("ui_group_overlay_appearance"), func() {
+		row(i18n.T("ui_row_overlay_opacity"), i18n.T("ui_row_overlay_opacity_desc"), func() {
+			sc.renderPercentSlider(c, "overlay-opacity", cfg.Appearance.EffectiveOpacity(), config.MinOpacity*100, func(next float64) {
+				sc.updateConfig(func(ac *config.AppConfig) { ac.Appearance.Opacity = next })
+			}, p)
+		})
+	})
+
+	// Group 4: Transition Animations & Physics Toggle
 	group(i18n.T("anim_title"), func() {
 		row(i18n.T("ui_row_anim_style"), i18n.T("ui_row_anim_style_desc"), func() {
 			anims := []string{"spring", "fade", "slide", "float", "zoom", "none"}

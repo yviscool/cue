@@ -79,6 +79,7 @@ type windowsStreamEngine struct {
 	rawBuffers [numRingBuffers][]byte
 	headers    [numRingBuffers]waveHdr
 	voices     []activeVoice
+	volume     float64
 
 	stopCh    chan struct{}
 	doneCh    chan struct{}
@@ -138,6 +139,7 @@ func newWindowsStreamEngine() (*windowsStreamEngine, error) {
 		hWaveOut: hWaveOut,
 		hEvent:   hEvent,
 		voices:   make([]activeVoice, 0, maxVoices),
+		volume:   1.0,
 		stopCh:   make(chan struct{}),
 		doneCh:   make(chan struct{}),
 	}
@@ -190,9 +192,15 @@ func (e *windowsStreamEngine) mixBuffer(buf []byte) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	if len(e.voices) == 0 {
+	gain := e.volume
+	if len(e.voices) == 0 || gain <= 0 {
 		for i := range buf {
 			buf[i] = 0
+		}
+		if gain <= 0 {
+			// Muted: drop the pending voices too, so unmuting later cannot
+			// replay a burst of stale keystrokes that were held during the mute.
+			e.voices = e.voices[:0]
 		}
 		return
 	}
@@ -208,9 +216,9 @@ func (e *windowsStreamEngine) mixBuffer(buf []byte) {
 			}
 		}
 
-		// Soft limiter saturation to avoid harsh digital clipping
-		left := softLimit(sumL)
-		right := softLimit(sumR)
+		// Master gain, then soft limiter saturation to avoid harsh clipping.
+		left := softLimit(sumL * gain)
+		right := softLimit(sumR * gain)
 
 		offset := f * 4
 		buf[offset] = byte(left)
@@ -252,6 +260,19 @@ func (e *windowsStreamEngine) PlaySamples(samples []int16) {
 		e.voices = e.voices[:len(e.voices)-1]
 	}
 	e.voices = append(e.voices, activeVoice{samples: samples, pos: 0})
+}
+
+// SetVolume applies a master gain in [0, 1] to the mix.
+func (e *windowsStreamEngine) SetVolume(volume float64) {
+	if volume < 0 {
+		volume = 0
+	}
+	if volume > 1 {
+		volume = 1
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.volume = volume
 }
 
 func (e *windowsStreamEngine) Stop() {

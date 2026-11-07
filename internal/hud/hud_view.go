@@ -306,6 +306,11 @@ func (v *ViewState) Render(c *ui.Context) {
 	fmx := float32(mx)
 	fmy := float32(my)
 
+	// The whole key overlay shares one opacity multiplier, so the user can fade
+	// the keycaps into the presentation without touching individual colors. It
+	// multiplies down the tree, composing with each chord's own enter/exit fade.
+	overlayOpacity := float32(cfg.Appearance.EffectiveOpacity())
+
 	if cfg.Appearance.FlexDirection == "col" || cfg.Appearance.FlexDirection == "column" {
 		ui.Column(c.Key("key-overlay-container")).
 			Fill().
@@ -313,6 +318,7 @@ func (v *ViewState) Render(c *ui.Context) {
 			AlignItems(hAlign).
 			Padding(fmy, fmx, fmy, fmx).
 			Gap(12).
+			Opacity(overlayOpacity).
 			Children(renderContent)
 	} else {
 		ui.Row(c.Key("key-overlay-container")).
@@ -321,6 +327,7 @@ func (v *ViewState) Render(c *ui.Context) {
 			AlignItems(vAlign).
 			Padding(fmy, fmx, fmy, fmx).
 			Gap(14).
+			Opacity(overlayOpacity).
 			Children(renderContent)
 	}
 }

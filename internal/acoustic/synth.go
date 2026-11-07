@@ -62,6 +62,8 @@ var variationPitchFactors = [numVariations]float64{
 
 type audioEngine interface {
 	PlaySamples(samples []int16)
+	// SetVolume applies a master gain in [0, 1] to everything the engine mixes.
+	SetVolume(volume float64)
 	Stop()
 	Close()
 }
@@ -69,6 +71,7 @@ type audioEngine interface {
 type stubAudioEngine struct{}
 
 func (s *stubAudioEngine) PlaySamples([]int16) {}
+func (s *stubAudioEngine) SetVolume(float64)   {}
 func (s *stubAudioEngine) Stop()               {}
 func (s *stubAudioEngine) Close()              {}
 
@@ -115,6 +118,7 @@ func profileToIndex(p SoundProfile) int {
 type Player struct {
 	mu           sync.RWMutex
 	enabled      bool
+	volume       float64
 	profile      SoundProfile
 	themeProfile string
 	thockWAV     []byte
@@ -129,9 +133,11 @@ type Player struct {
 func NewPlayer() *Player {
 	p := &Player{
 		enabled: true,
+		volume:  1.0,
 		profile: ProfileAuto,
 		engine:  newAudioEngine(),
 	}
+	p.engine.SetVolume(p.volume)
 
 	// Pre-render the 5 (profiles) x 2 (types) x 5 (zones) x 3 (variations) stereo matrix
 	// for zero-allocation, 0ms latency polyphonic audio playback at keystroke time.
@@ -166,6 +172,32 @@ func (p *Player) IsEnabled() bool {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	return p.enabled
+}
+
+// SetVolume sets the master keystroke volume in [0, 1]. The gain is applied at
+// mix time rather than baked into the buffers, so moving the slider is instant
+// and never re-synthesizes the 5x2x5x3 sample matrix.
+func (p *Player) SetVolume(volume float64) {
+	if volume < 0 {
+		volume = 0
+	}
+	if volume > 1 {
+		volume = 1
+	}
+	p.mu.Lock()
+	p.volume = volume
+	engine := p.engine
+	p.mu.Unlock()
+	if engine != nil {
+		engine.SetVolume(volume)
+	}
+}
+
+// GetVolume returns the configured master volume in [0, 1].
+func (p *Player) GetVolume() float64 {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.volume
 }
 
 // SetProfile configures the active acoustic archetype profile.

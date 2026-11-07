@@ -37,6 +37,31 @@ type AppearanceSettings struct {
 	AnimationDuration     float64   `json:"animationDuration"`     // default 0.25 (seconds)
 	DisablePressAnimation bool      `json:"disablePressAnimation"` // disables keycap sinking & press highlight FX
 	Style                 string    `json:"style"`                 // "lowprofile" | "minimal" | "laptop" | "pbt"
+	Opacity               float64   `json:"opacity"`               // overall keycap overlay opacity, 1.0 = fully opaque
+}
+
+// Opacity bounds. The floor keeps the overlay visible enough to be dragged back
+// up: a slider that can reach zero would look like the overlay had vanished.
+const (
+	MinOpacity     = 0.10
+	MaxOpacity     = 1.00
+	DefaultOpacity = 1.00
+)
+
+// EffectiveOpacity returns the overlay opacity clamped into the usable band, so
+// a hand-edited config.json cannot make the HUD invisible or fully opaque when
+// the user asked for something in between.
+func (a AppearanceSettings) EffectiveOpacity() float64 {
+	switch {
+	case a.Opacity <= 0:
+		return DefaultOpacity
+	case a.Opacity < MinOpacity:
+		return MinOpacity
+	case a.Opacity > MaxOpacity:
+		return MaxOpacity
+	default:
+		return a.Opacity
+	}
 }
 
 // LayoutSettings defines internal keycap element toggles.
@@ -141,6 +166,7 @@ type AppConfig struct {
 	// Jobsian Enhanced Extensions (Optional enhancements)
 	TactileAudio    bool             `json:"tactileAudio"`    // Micro-acoustics ON/OFF
 	AudioProfile    string           `json:"audioProfile"`    // "auto", "thock", "click", "scissor", "glass", "typewriter"
+	AudioVolume     float64          `json:"audioVolume"`     // master keystroke volume, 1.0 = unity gain
 	SemanticSub     bool             `json:"semanticSub"`     // Semantic Action subtitles ON/OFF
 	SemanticContext bool             `json:"semanticContext"` // Context-aware shortcut interpretation
 	ShowAppBadge    bool             `json:"showAppBadge"`    // Show the recognized application badge in subtitles
@@ -149,11 +175,34 @@ type AppConfig struct {
 	Language        string           `json:"language"`    // "zh-CN", "en-US", "zh-TW", "ja-JP", or "" (system default)
 }
 
+// Audio volume bounds. 1.0 is unity gain, matching the loudness of the
+// synthesized profiles before the slider existed, so upgrading does not change
+// how loud the app sounds.
+const (
+	MinAudioVolume     = 0.0
+	MaxAudioVolume     = 1.0
+	DefaultAudioVolume = 1.0
+)
+
+// EffectiveVolume returns the master keystroke volume clamped to [0, 1]. Zero is
+// a legitimate value (muted), so the default for configs written before the
+// field existed is supplied by migrateLegacyConfig rather than guessed here.
+func (c AppConfig) EffectiveVolume() float64 {
+	if c.AudioVolume < MinAudioVolume {
+		return MinAudioVolume
+	}
+	if c.AudioVolume > MaxAudioVolume {
+		return MaxAudioVolume
+	}
+	return c.AudioVolume
+}
+
 // configVersion history:
 //
 //	2 - theme-derived values inherit from the selected preset
 //	3 - context intelligence (semanticContext / showAppBadge / custom shortcuts)
-const configVersion = 3
+//	4 - presentation controls (keycap overlay opacity, keystroke volume)
+const configVersion = 4
 
 // DefaultConfig returns the official Cue defaults. Theme-derived values are left
 // empty/zero on purpose: the selected theme is the single source of truth for
@@ -181,6 +230,7 @@ func DefaultConfig() AppConfig {
 			Animation:         "fade",
 			AnimationDuration: 0.25,
 			Style:             "",
+			Opacity:           DefaultOpacity,
 		},
 		Layout: LayoutSettings{
 			ShowIcon:       true,
@@ -232,6 +282,7 @@ func DefaultConfig() AppConfig {
 		},
 		TactileAudio:    true,
 		AudioProfile:    "auto",
+		AudioVolume:     DefaultAudioVolume,
 		SemanticSub:     true,
 		SemanticContext: true,
 		ShowAppBadge:    true,
@@ -531,6 +582,21 @@ func migrateLegacyConfig(c *AppConfig) bool {
 		c.SemanticContext = true
 		c.ShowAppBadge = true
 		c.Version = 3
+		migrated = true
+	}
+
+	if c.Version < 4 {
+		// Version 4: the opacity and volume sliders did not exist before, so a
+		// zero value here means "unset". Both default to their neutral position:
+		// fully opaque and unity gain, which preserves the previous look and
+		// loudness exactly.
+		if c.Appearance.Opacity <= 0 {
+			c.Appearance.Opacity = DefaultOpacity
+		}
+		if c.AudioVolume <= 0 {
+			c.AudioVolume = DefaultAudioVolume
+		}
+		c.Version = 4
 		migrated = true
 	}
 

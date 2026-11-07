@@ -278,3 +278,138 @@ func TestStoreInvalidJsonPreservesConfig(t *testing.T) {
 		t.Errorf("corrupt reload corrupted in-memory config: %+v", store.Get())
 	}
 }
+
+// TestV4PresentationDefaults checks the migration path for the opacity and
+// volume sliders. A config written by a v3 build has neither key, so both must
+// land on their neutral position instead of a zero that would render the overlay
+// invisible or mute the app.
+func TestV4PresentationDefaults(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "cue_cfg_v4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	filePath := filepath.Join(tmpDir, "v3.json")
+	// Deliberately written by hand: no opacity, no audioVolume.
+	raw := `{
+  "version": 3,
+  "appearance": {"alignment": "bottom-center", "marginX": 120},
+  "tactileAudio": true,
+  "audioProfile": "thock",
+  "themePreset": "Liquid Glass"
+}`
+	if err := os.WriteFile(filePath, []byte(raw), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	store, err := NewStore(filePath)
+	if err != nil {
+		t.Fatalf("failed to load v3 store: %v", err)
+	}
+	got := store.Get()
+
+	if got.Version != configVersion {
+		t.Errorf("expected version %d, got %d", configVersion, got.Version)
+	}
+	if got.Appearance.Opacity != DefaultOpacity {
+		t.Errorf("opacity should default to %v, got %v", DefaultOpacity, got.Appearance.Opacity)
+	}
+	if got.AudioVolume != DefaultAudioVolume {
+		t.Errorf("volume should default to %v, got %v", DefaultAudioVolume, got.AudioVolume)
+	}
+	if got.Appearance.EffectiveOpacity() != 1.0 {
+		t.Errorf("effective opacity should be 1.0, got %v", got.Appearance.EffectiveOpacity())
+	}
+	if got.EffectiveVolume() != 1.0 {
+		t.Errorf("effective volume should be unity gain, got %v", got.EffectiveVolume())
+	}
+	// Existing preferences survive the migration untouched.
+	if got.Appearance.MarginX != 120 || got.AudioProfile != "thock" {
+		t.Errorf("existing preferences were lost: %+v", got.Appearance)
+	}
+}
+
+// TestV4ExplicitPresentationValuesArePreserved makes sure a muted overlay or a
+// lowered volume that the user actually chose is never overwritten by the
+// migration defaults.
+func TestV4ExplicitPresentationValuesArePreserved(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "cue_cfg_v4_explicit")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	filePath := filepath.Join(tmpDir, "v4.json")
+	raw := `{
+  "version": 4,
+  "appearance": {"opacity": 0.45},
+  "audioVolume": 0.3
+}`
+	if err := os.WriteFile(filePath, []byte(raw), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	store, err := NewStore(filePath)
+	if err != nil {
+		t.Fatalf("failed to load v4 store: %v", err)
+	}
+	got := store.Get()
+	if got.Appearance.Opacity != 0.45 {
+		t.Errorf("explicit opacity was overwritten: %v", got.Appearance.Opacity)
+	}
+	if got.AudioVolume != 0.3 {
+		t.Errorf("explicit volume was overwritten: %v", got.AudioVolume)
+	}
+}
+
+func TestEffectiveVolumeClamps(t *testing.T) {
+	cases := []struct {
+		in   float64
+		want float64
+	}{
+		{-1, 0},
+		{0, 0},
+		{0.35, 0.35},
+		{1, 1},
+		{2.5, 1},
+	}
+	for _, tc := range cases {
+		got := AppConfig{AudioVolume: tc.in}.EffectiveVolume()
+		if got != tc.want {
+			t.Errorf("EffectiveVolume(%v) = %v, want %v", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestEffectiveOpacityClamps(t *testing.T) {
+	cases := []struct {
+		in   float64
+		want float64
+	}{
+		{0, DefaultOpacity},    // unset or hand-edited to zero: never invisible
+		{-0.5, DefaultOpacity}, // nonsense
+		{0.02, MinOpacity},     // below the usable band
+		{0.4, 0.4},             // in range
+		{1, MaxOpacity},        // fully opaque
+		{3, MaxOpacity},        // nonsense
+	}
+	for _, tc := range cases {
+		got := AppearanceSettings{Opacity: tc.in}.EffectiveOpacity()
+		if got != tc.want {
+			t.Errorf("EffectiveOpacity(%v) = %v, want %v", tc.in, got, tc.want)
+		}
+	}
+}
+
+// TestDefaultConfigIsFullyOpaqueAndAudible pins the shipped defaults so a future
+// edit cannot silently dim the overlay or mute the keystroke sound.
+func TestDefaultConfigIsFullyOpaqueAndAudible(t *testing.T) {
+	cfg := DefaultConfig()
+	if cfg.Appearance.EffectiveOpacity() != 1.0 {
+		t.Errorf("default overlay opacity should be 1.0, got %v", cfg.Appearance.EffectiveOpacity())
+	}
+	if cfg.EffectiveVolume() != 1.0 {
+		t.Errorf("default volume should be unity gain, got %v", cfg.EffectiveVolume())
+	}
+}

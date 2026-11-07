@@ -459,6 +459,7 @@ func (a *app) applyConfig(cfg config.AppConfig) {
 	a.repositionHUD(cfg)
 	if a.player != nil {
 		a.player.SetEnabled(cfg.TactileAudio)
+		a.player.SetVolume(cfg.EffectiveVolume())
 		prof := cfg.AudioProfile
 		if prof == "" {
 			prof = "auto"
