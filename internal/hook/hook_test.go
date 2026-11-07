@@ -619,7 +619,7 @@ func TestHook_InjectedFilter(t *testing.T) {
 		scanCode: 0x1E,
 		flags:    LLKHF_INJECTED,
 	}
-	wh.handleKeyboard(WM_KEYDOWN, uintptr(unsafe.Pointer(&injectedKbd)))
+	wh.handleKeyboard(WM_KEYDOWN, unsafe.Pointer(&injectedKbd))
 
 	select {
 	case ev := <-wh.Events():
@@ -634,7 +634,7 @@ func TestHook_InjectedFilter(t *testing.T) {
 		scanCode: 0x1E,
 		flags:    0,
 	}
-	wh.handleKeyboard(WM_KEYDOWN, uintptr(unsafe.Pointer(&normalKbd)))
+	wh.handleKeyboard(WM_KEYDOWN, unsafe.Pointer(&normalKbd))
 
 	select {
 	case ev := <-wh.Events():
@@ -643,6 +643,27 @@ func TestHook_InjectedFilter(t *testing.T) {
 		}
 	case <-time.After(500 * time.Millisecond):
 		t.Fatal("timed out waiting for normal event")
+	}
+}
+
+// TestHook_CallbacksRegister verifies both hook thunks can actually be built.
+// The hook procedure carries lParam as an unsafe.Pointer so the KBDLLHOOKSTRUCT
+// pointer reaches the handler without a uintptr round trip, and
+// syscall.NewCallback rejects a signature it cannot marshal by panicking at
+// registration time. Without this test that panic would only ever surface on a
+// real user's machine, on the first keystroke after launch.
+func TestHook_CallbacksRegister(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("skipping Windows-specific hook registration on non-Windows")
+	}
+
+	initCallbacks()
+
+	if kbdCallbackPtr == 0 {
+		t.Error("keyboard hook callback was not registered")
+	}
+	if mouseCallbackPtr == 0 {
+		t.Error("mouse hook callback was not registered")
 	}
 }
 

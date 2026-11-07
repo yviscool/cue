@@ -32,10 +32,19 @@ func TestShortcutReference(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read %s: %v\nRegenerate with CUE_UPDATE_REFERENCE=1 go test ./internal/semantic -run TestShortcutReference", referencePath, err)
 	}
-	if string(got) != want {
-		t.Fatalf("docs/shortcut-reference.md is stale (%d bytes on disk, %d rendered).\n"+
+
+	// Line endings are a checkout artefact, not a content difference: Git on
+	// Windows rewrites this committed LF file to CRLF in the working tree, while
+	// RenderReference always emits LF. Comparing raw bytes therefore failed on
+	// every Windows CI run even when the document was perfectly up to date, so
+	// both sides are normalised before the comparison.
+	normalize := func(s string) string { return strings.ReplaceAll(s, "\r\n", "\n") }
+	gotText, wantText := normalize(string(got)), normalize(want)
+
+	if gotText != wantText {
+		t.Fatalf("docs/shortcut-reference.md is stale (%d bytes on disk, %d rendered, line endings normalised).\n"+
 			"Regenerate with: CUE_UPDATE_REFERENCE=1 go test ./internal/semantic -run TestShortcutReference",
-			len(got), len(want))
+			len(gotText), len(wantText))
 	}
 }
 

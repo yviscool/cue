@@ -113,9 +113,17 @@ var (
 	mouseCallbackPtr uintptr
 )
 
+// initCallbacks registers the two low-level hook thunks.
+//
+// lParam is declared as unsafe.Pointer rather than uintptr on purpose: Windows
+// hands the hook procedure a pointer to a KBDLLHOOKSTRUCT / MSLLHOOKSTRUCT, and
+// carrying it as a real pointer from the thunk down to the handler avoids the
+// uintptr -> unsafe.Pointer round trip that go vet (correctly) flags as unsafe,
+// since the GC cannot see through a uintptr and could in principle move the
+// object underneath it.
 func initCallbacks() {
 	initOnce.Do(func() {
-		kbdCallbackPtr = syscall.NewCallback(func(nCode int, wParam uintptr, lParam uintptr) uintptr {
+		kbdCallbackPtr = syscall.NewCallback(func(nCode int, wParam uintptr, lParam unsafe.Pointer) uintptr {
 			if nCode >= 0 {
 				registryMu.RLock()
 				for h := range hookRegistry {
@@ -123,11 +131,11 @@ func initCallbacks() {
 				}
 				registryMu.RUnlock()
 			}
-			r, _, _ := procCallNextHookEx.Call(0, uintptr(nCode), wParam, lParam)
+			r, _, _ := procCallNextHookEx.Call(0, uintptr(nCode), wParam, uintptr(lParam))
 			return r
 		})
 
-		mouseCallbackPtr = syscall.NewCallback(func(nCode int, wParam uintptr, lParam uintptr) uintptr {
+		mouseCallbackPtr = syscall.NewCallback(func(nCode int, wParam uintptr, lParam unsafe.Pointer) uintptr {
 			if nCode >= 0 {
 				registryMu.RLock()
 				for h := range hookRegistry {
@@ -135,7 +143,7 @@ func initCallbacks() {
 				}
 				registryMu.RUnlock()
 			}
-			r, _, _ := procCallNextHookEx.Call(0, uintptr(nCode), wParam, lParam)
+			r, _, _ := procCallNextHookEx.Call(0, uintptr(nCode), wParam, uintptr(lParam))
 			return r
 		})
 	})
@@ -508,11 +516,12 @@ func (h *windowsHook) currentModifiers() Modifiers {
 }
 
 // handleKeyboard processes keyboard hook messages and dispatches InputEvents without blocking.
-func (h *windowsHook) handleKeyboard(wParam uintptr, lParam uintptr) {
-	if lParam == 0 {
+// lParam is the KBDLLHOOKSTRUCT pointer supplied by the hook thunk.
+func (h *windowsHook) handleKeyboard(wParam uintptr, lParam unsafe.Pointer) {
+	if lParam == nil {
 		return
 	}
-	kbd := (*kbdllHookStruct)(unsafe.Pointer(lParam))
+	kbd := (*kbdllHookStruct)(lParam)
 	// Windows injected key filter: Ignore injected synthetic events
 	// (e.g. from Windows Start Menu / accessibility opening that caused Win+Esc to inject Ctrl+A)
 	if (kbd.flags & LLKHF_INJECTED) != 0 {
@@ -584,11 +593,12 @@ func (h *windowsHook) processKeyboard(wParam uintptr, vk uint32, scan uint32, al
 }
 
 // handleMouse processes mouse hook messages and dispatches InputEvents without blocking.
-func (h *windowsHook) handleMouse(wParam uintptr, lParam uintptr) {
-	if lParam == 0 {
+// lParam is the MSLLHOOKSTRUCT pointer supplied by the hook thunk.
+func (h *windowsHook) handleMouse(wParam uintptr, lParam unsafe.Pointer) {
+	if lParam == nil {
 		return
 	}
-	ms := (*msllHookStruct)(unsafe.Pointer(lParam))
+	ms := (*msllHookStruct)(lParam)
 	h.processMouse(wParam, ms.pt.x, ms.pt.y, ms.mouseData)
 }
 
