@@ -31,14 +31,16 @@
 
 - ⚡ **Pure Go ネイティブ設計 (Zero CGO)**：Windows Win32 および Direct3D 11 API に直接接続。単一の実行可能ファイル（< 12 MB）で動作し、外部 DLL や C ランタイムへの依存はありません。ミリ秒単位の超高速起動と極限の省メモリを実現。
 - 🎮 **Direct3D 11 GPU レンダリング**：60Hz / 120Hz / 144Hz+ の高リフレッシュレートをサポート。ティアリングのない透明オーバーレイが、クリックスルーで滑らかに動作します。
-- 🎨 **12 種類の厳選キーボードテーマ**：
+- 🎨 **19 種類の厳選キーボードテーマ**：
   - *Liquid Glass*（visionOS 風すりガラス擬態と微光屈折）
   - *MacBook Scissor*（Apple スペースグレイ調のアルミシザースイッチ）
   - *Dieter Rams 1960*（ブラウン社のインダストリアルデザインと温かいグレー＆オレンジ）
   - *Cyberpunk Neon*（ハイコントラストなシアン＆マゼンタネオン）
+  - *Azure Pulse*（深いネイビーの地板に、修飾キーも文字キーと同じアジュールで発光）
   - *Classic Mechanical*（PBT ダブルショットキーキャップ）
   - *IBM Model M 1984*（クラシックな座屈バネ式メカニカル）
-  - *Minimal Chalk*, *Obsidian OLED*, *Tokyo Blossom*, *Emerald Matrix*, *Sunset Horizon*, *Royal Velvet*
+  - *Sony Walkman 1979*（金属シルバーブルーとカセットデッキのアクリル）
+  - *Minimal Chalk*, *Obsidian OLED*, *Tokyo Blossom*, *Emerald Matrix*, *Sunset Horizon*, *Royal Velvet*, *Teenage OP-1*, *Amber Cathode 1977*, *Swiss Typography 1957*, *Kyoto Kintsugi*, *Blueprint Cyanotype*
 - 🖱️ **6 種類の専用マウステーマ (v1.1.0 新機能)**：
   - *Neon Green*、*Aurora Dual-Tone*、*Cyber Cyan*、*Obsidian Crimson*、*Deep Space Blue*、*Minimal White*
   - 左右クリックとホイールの色分け表示、カーソル周辺の波紋エフェクト。
@@ -60,6 +62,13 @@
   - 高速タイピングに対応した低遅延ポリフォニックミキシングエンジンを搭載。
   - 5種類の打鍵音プロファイル：**Thock (メカニカル)**、**Click (クリッキー)**、**Scissor (パンタグラフ)**、**Glass (グラス)**、**Typewriter (タイプライター)**。テーマ連動または手動選択に対応。
   - キーの水平位置に応じたステレオパンニングとピッチ変化をサポート。
+- 🎚️ **ライブ表示コントロール (v1.3.0 新機能)**：
+  - キーキャップ表示とマウスオーバーレイそれぞれに独立した不透明度スライダー。カーソルリングをキーキャップより淡く表示できます。
+  - 打鍵音量のマスタースライダー。ゲインはミックス時に適用されるため、サンプルを再レンダリングせず即座に反映されます。
+- 📚 **ショートカット語彙の拡充**：
+  - 25 以上のアプリプロファイルと 120 のカテゴリ既定値にわたる 1061 件のマッピング、707 種の異なるアクション意図、重複コードはゼロ。
+  - シフト記号の正規化：`Ctrl + !`、`Ctrl + Shift + 1`、`Ctrl + Shift + Exclamation` はすべて同一のコードとして解決されます。
+  - 生成されたリファレンス表は `docs/shortcut-reference.md` にあり、テストで検証されます。
 - 📍 **デュアル 9 分割スクリーン配置＆ミニマップ**：
   - 3×3 方向ボタンと 16:10 縮小ディスプレイミニマップで、直感的な画面端吸着とピクセル単位のマージン調整が可能。
 - 🔒 **プライバシーシールド**：

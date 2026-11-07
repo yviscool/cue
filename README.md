@@ -31,14 +31,16 @@ Engineered for tech speakers, educators, live streamers, and screencasters, Cue 
 
 - ⚡ **Pure Go Runtime (Zero CGO)**: Standalone single-binary distribution (< 12 MB) with zero external DLL dependencies. Sub-millisecond startup and microscopic memory footprint.
 - 🎮 **Direct3D 11 GPU Direct Rendering**: Hardware-pipelined drawing at full monitor refresh rates (60Hz / 120Hz / 144Hz+). Truly transparent, borderless overlay that passes clicks through seamlessly.
-- 🎨 **12 Master Keyboard Themes**:
+- 🎨 **19 Curated Keyboard Themes**:
   - *Liquid Glass* (visionOS-inspired frosted refractive translucent glass)
   - *MacBook Scissor* (Apple Space Gray anodized aluminum aesthetic)
   - *Dieter Rams 1960* (Braun warm putty gray with iconic safety orange)
   - *Cyberpunk Neon* (High-contrast cyan & magenta neon pulse)
+  - *Azure Pulse* (Deep navy plate with modifier keys glowing in the same azure as the letter keys)
   - *Classic Mechanical* (PBT double-shot keycaps)
   - *IBM Model M 1984* (Industrial retro buckling spring)
-  - *Minimal Chalk*, *Obsidian OLED*, *Tokyo Blossom*, *Emerald Matrix*, *Sunset Horizon*, *Royal Velvet*
+  - *Sony Walkman 1979* (Brushed silver-blue metal with cassette-deck acrylic)
+  - *Minimal Chalk*, *Obsidian OLED*, *Tokyo Blossom*, *Emerald Matrix*, *Sunset Horizon*, *Royal Velvet*, *Teenage OP-1*, *Amber Cathode 1977*, *Swiss Typography 1957*, *Kyoto Kintsugi*, *Blueprint Cyanotype*
 - 🖱️ **6 Companion Mouse Themes (New in v1.1.0)**:
   - *Neon Green*, *Aurora Dual-Tone*, *Cyber Cyan*, *Obsidian Crimson*, *Deep Space Blue*, *Minimal White*
   - Color-coded left, right, and middle click lobes with companion cursor rings.
@@ -58,6 +60,13 @@ Engineered for tech speakers, educators, live streamers, and screencasters, Cue 
   - Low-latency polyphonic mixing engine for rapid keystroke playback.
   - 5 sound profiles: *Thock* (mechanical), *Click* (tactile), *Scissor* (laptop), *Glass* (chime), and *Typewriter*, supporting automatic theme matching and manual selection.
   - Stereo panning based on physical key horizontal positions with micro-pitch dynamics.
+- 🎚️ **Live Presentation Controls (New in v1.3.0)**:
+  - Independent opacity sliders for the keycap overlay and the mouse overlay, so the cursor ring can sit fainter than the keycaps next to it.
+  - Master keystroke volume slider, applied as gain at mix time so dragging it responds instantly without re-rendering a single sample.
+- 📚 **Expanded Shortcut Vocabulary**:
+  - 1061 mappings across 25+ application profiles and 120 category defaults, 707 distinct action intents, zero duplicate chords.
+  - Shifted-symbol canonicalisation: `Ctrl + !`, `Ctrl + Shift + 1` and `Ctrl + Shift + Exclamation` all resolve to the same chord.
+  - A generated reference table lives at `docs/shortcut-reference.md` and is verified by test.
 - 📍 **Dual-Mode 9-Grid Screen Positioning**:
   - Tactile 3×3 edge matrix paired with an interactive 16:10 desktop mini-map for pixel-perfect margin adjustments.
 - 🔒 **Privacy Shield**:

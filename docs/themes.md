@@ -4,7 +4,7 @@ Cue is crafted with obsessive attention to visual design, typography, and motion
 
 ---
 
-## 1. Master Keyboard Themes (12 Curated Presets)
+## 1. Master Keyboard Themes (19 Curated Presets)
 
 Each theme is engineered with a distinct visual palette, shadow depth, border refraction, and modifier badge hierarchy:
 
@@ -14,6 +14,7 @@ Each theme is engineered with a distinct visual palette, shadow depth, border re
 | **MacBook Scissor** | Apple Space Gray anodized aluminum with scissor-switch crispness | `laptop` | Pearl White (`#f1f5f9`) |
 | **Dieter Rams 1960** | Braun industrial design, warm matte putty gray with iconic orange accent | `minimal` | Braun Orange (`#ea580c`) |
 | **Cyberpunk Neon** | High-contrast deep night cyber grid with electric cyan and hot magenta | `cyber-neon` | Electric Cyan (`#00f0ff`) |
+| **Azure Pulse** | Deep navy plate where modifier keys glow in the same azure as the letter keys | `neon` | Azure (`#22d3ee`) |
 | **Classic Mechanical** | Custom mechanical keyboard with PBT double-shot keycaps | `pbt-mechanical` | Vibrant Blue (`#3b82f6`) |
 | **IBM Model M 1984** | Vintage beige buckling-spring industrial workstation | `retro-typewriter`| Charcoal (`#334155`) |
 | **Minimal Chalk** | High-contrast chalkboard aesthetic with crisp chalk white typography | `minimal` | Chalk White (`#ffffff`) |
@@ -22,6 +23,12 @@ Each theme is engineered with a distinct visual palette, shadow depth, border re
 | **Emerald Matrix** | Deep terminal emerald green with digital phosphor luminescence | `cyber-neon` | Emerald Green (`#10b981`) |
 | **Sunset Horizon** | Warm dusk gradient with golden hour peach and crimson | `liquid-glass` | Sunset Gold (`#f59e0b`) |
 | **Royal Velvet** | Luxurious deep imperial violet with royal lilac highlights | `laptop` | Royal Purple (`#8b5cf6`) |
+| **Sony Walkman 1979** | Brushed silver-blue metal with cassette-deck acrylic and the orange HOT LINE mark | `laptop` | Signal Orange (`#ff6b00`) |
+| **Teenage OP-1** | Swedish synth industrial design: flat low caps, cool grey chassis, saturated primary accents | `minimal` | OP-1 Sky (`#0284c7`) |
+| **Amber Cathode 1977** | DEC VT100 curved CRT glass with amber monochrome phosphor | `retro` | Amber Phosphor (`#f59e0b`) |
+| **Swiss Typography 1957** | International Typographic Style: white ground, heavy black grotesk, Swiss red dot | `minimal` | Swiss Red (`#dc2626`) |
+| **Kyoto Kintsugi** | Coarse black ceramic with flowing gold lacquer seams | `pbt` | Kintsugi Gold (`#d9a02b`) |
+| **Blueprint Cyanotype** | Prussian blue ground with fine white drafting grids | `outline` | Drafting White (`#93c5fd`) |
 
 ---
 

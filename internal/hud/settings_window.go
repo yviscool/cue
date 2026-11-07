@@ -403,7 +403,7 @@ func (sc *SettingsController) render(c *ui.Context) {
 				}
 				ui.Column(c).Gap(2).Children(func() {
 					ui.Text(c, i18n.T("app_name")).Bold().FontSize(14.5).TextColor(p.text)
-					ui.Text(c, "v1.2 · Direct3D 11").FontSize(11).TextColor(p.muted)
+					ui.Text(c, "v1.3 · Direct3D 11").FontSize(11).TextColor(p.muted)
 				})
 			})
 

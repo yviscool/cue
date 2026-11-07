@@ -33,14 +33,16 @@
 
 - ⚡ **原生 Pure Go 直驱 (Zero CGO)**：纯 Go 语言直连 Windows Win32 / Direct3D 11 底层，单文件独立运行（< 12 MB），零依赖任何外部 C 运行时或 DLL。毫秒级极速冷启动，内存占用极微。
 - 🎮 **Direct3D 11 GPU 硬件渲染**：原生支持 60Hz / 120Hz / 144Hz+ 高刷新率，无撕裂、透明穿透，绝不抢占任何前台焦点。
-- 🎨 **12 款官方精选大师级键盘主题**：
+- 🎨 **19 款官方精选大师级键盘主题**：
   - *液态冰晶 (Liquid Glass)*：visionOS 毛玻璃拟态微光折射
   - *深空剪刀脚 (MacBook Scissor)*：苹果深空灰轻薄磨砂质感
   - *博朗经典 (Dieter Rams 1960)*：迪特·拉姆斯工业美学暖灰与经典安全橙
   - *赛博霓虹 (Cyberpunk Neon)*：高对比电光青紫霓虹脉冲
+  - *深蓝脉冲 (Azure Pulse)*：深蓝底板，修饰键与字母键同色冰蓝荧光
   - *经典机械 (Classic Mechanical)*：PBT 双色注塑质感
   - *IBM Model M 1984*：复古工业屈服弹簧轴
-  - *极简粉笔 (Minimal Chalk)*、*黑曜石 OLED (Obsidian OLED)*、*东京樱花 (Tokyo Blossom)*、*翡翠矩阵 (Emerald Matrix)*、*落日地平线 (Sunset Horizon)*、*皇家天鹅绒 (Royal Velvet)*
+  - *索尼经典 (Sony Walkman 1979)*：金属银蓝与磁带仓亚克力质感
+  - *极简粉笔 (Minimal Chalk)*、*黑曜石 OLED (Obsidian OLED)*、*东京樱花 (Tokyo Blossom)*、*翡翠矩阵 (Emerald Matrix)*、*落日地平线 (Sunset Horizon)*、*皇家天鹅绒 (Royal Velvet)*、*合成器先锋 (Teenage OP-1)*、*琥珀终端 (Amber Cathode 1977)*、*苏黎世平面 (Swiss Typography 1957)*、*京都金缮 (Kyoto Kintsugi)*、*工程蓝晒 (Blueprint Cyanotype)*
 - 🖱️ **6 套伴侣鼠标专属主题 (v1.1.0 升级)**：
   - *荧光极客绿 (Neon Green)*、*极光双色 (Aurora Dual-Tone)*、*赛博电青 (Cyber Cyan)*、*黑曜绯红 (Obsidian Crimson)*、*深空科技蓝 (Deep Space Blue)*、*纯粹极简白 (Minimal White)*
   - 左右键与滚轮扇区分色高亮，配合伴侣光标涟漪光环。
@@ -63,6 +65,13 @@
   - 内置多复音实时混音音频模块，支持高频击键平滑播放。
   - 预设 5 种按键音效：**Thock (机械轴)**、**Click (段落轴)**、**Scissor (剪刀脚)**、**Glass (玻璃微音)** 与 **Typewriter (打字机)**，支持与视觉主题联动或手动指定。
   - 支持基于按键水平坐标的双耳立体声声相定位与微音高动态变化。
+- 🎚️ **实时呈现控制 (v1.3.0 升级)**：
+  - 按键浮层与鼠标叠加层各自独立的透明度滑块，光标光圈可以比旁边的键帽更淡。
+  - 击键主音量滑块，增益在混音阶段施加，拖动即时生效、无需重新渲染任何采样。
+- 📚 **快捷键词库扩展**：
+  - 1061 条映射，覆盖 25+ 应用配置与 120 条分类默认，707 个不同动作意图，零重复键位。
+  - Shifted 符号规范化：`Ctrl + !`、`Ctrl + Shift + 1`、`Ctrl + Shift + Exclamation` 统一解析为同一个组合。
+  - 生成的对照表位于 `docs/shortcut-reference.md`，由测试校验。
 - 📍 **双模 9 宫格屏幕吸附定位系统**：
   - 实体 3×3 方位按钮矩阵配合全比例微缩屏幕交互小地图，支持精确边距像素微调。
 - 🔒 **隐私安全护盾 (Privacy Shield)**：
