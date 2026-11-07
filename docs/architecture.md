@@ -19,22 +19,24 @@ Cue is an ultra-fast, minimalist keystroke and gesture visualizer designed speci
                       +--------------+--------------+
                                      |
                                      v
-                      +-----------------------------+
-                      |      Cue State Engine       |
-                      | - Cadence Decay Loop        |
-                      | - Streak & Multi-Click      |
-                      | - Word Grouping & Backspace |
-                      | - Semantic Intent Matching  |
-                      +-------+--------------+------+
-                              |              |
-             Snapshot Emit    |              | Acoustic Trigger
-                              v              v
-     +--------------------------+          +-------------------------+
-     |   MyGo UI Scene Graph    |          | Spatial Acoustic Engine |
-     | - Retained Tree Elements |          | - Stereo Stage Panning  |
-     | - Spring Physics Motions |          | - Dynamic Thock/Clicks  |
-     | - D3D11 Pass-Through     |          +-------------------------+
-     +--------------------------+
+  +----------------+      +-----------------------------+
+  | App Context    |      |      Cue State Engine       |
+  | Provider       |----->| - Cadence Decay Loop        |
+  | - 250 ms poll  |      | - Streak & Multi-Click      |
+  | - change-driven|      | - Word Grouping & Backspace |
+  |   process query|      | - Sequence Collapsing       |
+  +----------------+      | - Semantic Intent Matching  |
+                          +-------+--------------+------+
+                                  |              |
+                     Snapshot Emit|              | Acoustic Trigger
+                                  v              v
+                 +--------------------------+  +-------------------------+
+                 |   MyGo UI Scene Graph    |  | Spatial Acoustic Engine |
+                 | - Retained Tree Elements |  | - Stereo Stage Panning  |
+                 | - Spring Physics Motions |  | - Dynamic Thock/Clicks  |
+                 | - Subtitle + App Badge   |  +-------------------------+
+                 | - D3D11 Pass-Through     |
+                 +--------------------------+
 ```
 
 ---
@@ -56,13 +58,27 @@ Cue is an ultra-fast, minimalist keystroke and gesture visualizer designed speci
 - **Backspace Absorption**: Typing backspace automatically trims the trailing character of an active word chord, keeping the presentation mirror clean.
 - **Streak & Multi-Click Counter**: Rapid repeated presses of the same key or mouse button increment a streak badge (`×2`, `×3`, `×4`) without flooding the screen with duplicate capsules.
 - **High-Resolution Retirement Timers**: Click contact highlights dim dynamically at `ClickLingerMs`, while multi-click badges persist for the full viewer recognition window (`1200ms`).
+- **Two-Chord Sequences**: A chord may be remembered as the first half of a sequence for `1.5s`. If the matcher recognizes the pair (e.g. `Ctrl+K Ctrl+S`), both cues collapse into one combined chord with a `→` separator instead of showing two unrelated key clusters. Any foreground change, plain key, or privacy trigger clears the pending state.
+- **Privacy-First Ordering**: Sensitivity is evaluated once per keystroke, before sequence matching, so a private context can never be merged into a shortcut hint.
 
-### 2.4 Semantic Shortcut Intent Matching (`internal/semantic`)
-- Inspects active chord combinations against an intelligent dictionary of universal shortcuts.
-- Translates raw key combinations into human-understandable intents (e.g., `Ctrl + C` $\rightarrow$ **Copy**, `Ctrl + V` $\rightarrow$ **Paste**, `Alt + Tab` $\rightarrow$ **Switch Window**, `Ctrl + Z` $\rightarrow$ **Undo**).
-- **Privacy Shield**: Detects sensitive passwords and authentication patterns, automatically masking private chords with a lock glyph (`[🔒 Private]`).
+### 2.4 Foreground Application Perception (`internal/context`)
+- **Polling, not hooking**: A dedicated goroutine samples `GetForegroundWindow` every `250ms` (clamped to 50ms–2s). It never runs on the low-level hook thread, so input latency is unaffected.
+- **Change-driven work**: Window titles are compared cheaply on every tick. The expensive process query (`OpenProcess` + `QueryFullProcessImageNameW`) only runs when the HWND actually changes.
+- **UWP resolution**: `ApplicationFrameHost` windows are resolved to their real child `Windows.UI.Core.CoreWindow` process, so packaged apps are identified correctly.
+- **Self-filtering**: Cue's own settings and tray windows publish an empty context, so opening Settings never changes the interpretation of the app behind it.
+- **Snapshot contract**: Subscribers receive an immutable `AppContext` (`HWND`, `PID`, `Exe`, `Title`, `Category`, `Seq`). `Seq` increments on every real change and is the cache key used by the semantic layer.
+- **Static provider**: `context.NewStatic` provides the same contract for tests and non-Windows builds.
 
-### 2.5 Spatial Acoustic Stage (`internal/acoustic`)
+### 2.5 Contextual Semantic Shortcut Matching (`internal/semantic`)
+- **Deterministic resolution order**: user override → exact application profile → application category → universal dictionary → no label. The chosen level is exposed as `Confidence` and can be shown in the HUD.
+- **Registry-driven profiles**: `internal/semantic/profiles.go` is the single data source for VS Code/Cursor, JetBrains, Visual Studio, Eclipse, Sublime, Zed, Notepad++, **Dev-C++**, **IDLE**, Office/WPS, browsers, terminals, Figma/Photoshop/Illustrator, Premiere/VLC, Slack/Teams/Discord/WeChat, Obsidian/Notion and File Explorer, plus category-wide and universal fallbacks.
+- **Ambiguous executables**: `python.exe` / `pythonw.exe` are shared by IDLE and ordinary scripts, so the IDLE profile additionally requires an `idle` or ` shell` title hint. `idle.exe` is unambiguous. A normal Python process is never mislabeled.
+- **Caching**: profile resolution and sensitive-window keyword scans are cached per `AppContext.Seq`; a keystroke costs only a few map lookups and allocates nothing on the hot path.
+- **User overrides**: `customShortcuts` entries are parsed once on config apply and pre-indexed by app + chord, so `ParseOverride` errors can never break built-in matching.
+- **Localization**: every action title emitted by the registry is translated into all four supported languages by `internal/i18n/actions.go`; a completeness test fails the build if a new action lacks a translation.
+- **Privacy Shield**: Detects sensitive windows (password managers, sign-in and banking pages, UAC/Windows Security, private/incognito) and typed patterns (`password`, `token`, `api_key`, long digit runs…), automatically masking private chords with a lock glyph (`[🔒 Private]`). Disabling context intelligence only affects subtitles; the shield always stays on.
+
+### 2.6 Spatial Acoustic Stage (`internal/acoustic`)
 - Replaces generic beeps with a real-time synthesized acoustic model.
 - Keystrokes generate dynamic mechanical "Thock" (modifier press) or crisp "Click" (character actuation) sound waves.
 - Stereo panning maps the horizontal origin of keys across the virtual soundstage based on keyboard geometry.

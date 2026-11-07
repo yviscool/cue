@@ -9,6 +9,7 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/yviscool/cue/internal/assets"
 	"github.com/yviscool/cue/internal/config"
+	"github.com/yviscool/cue/internal/context"
 	"github.com/yviscool/cue/internal/engine"
 	"github.com/yviscool/cue/internal/i18n"
 	"github.com/yviscool/cue/internal/semantic"
@@ -31,90 +32,106 @@ var (
 	iconChevronDown = strokeIcon(`<path d="m6 9 6 6 6-6"/>`)
 )
 
-// themeDisplayName returns an intuitive bilingual Chinese-first display name for preset themes.
+// themeNameKeys maps a preset theme name (lower-cased) to its localization key.
+// The theme package keeps a Chinese-first DisplayName for documentation and for
+// ThemeByName lookups, but the studio renders these localized labels so the
+// interface never mixes languages when the user switches to English/Japanese.
+var themeNameKeys = map[string]string{
+	"liquid glass":          "theme_liquid_glass",
+	"macbook scissor":       "theme_macbook_scissor",
+	"dieter rams 1960":      "theme_dieter_rams",
+	"cyberpunk neon":        "theme_cyberpunk_neon",
+	"classic mechanical":    "theme_classic_mechanical",
+	"ibm model m 1984":      "theme_ibm_model_m",
+	"minimal chalk":         "theme_minimal_chalk",
+	"obsidian oled":         "theme_obsidian_oled",
+	"tokyo blossom":         "theme_tokyo_blossom",
+	"emerald matrix":        "theme_emerald_matrix",
+	"sunset horizon":        "theme_sunset_horizon",
+	"royal velvet":          "theme_royal_velvet",
+	"sony walkman 1979":     "theme_sony_walkman",
+	"teenage op-1":          "theme_teenage_op1",
+	"amber cathode 1977":    "theme_amber_cathode",
+	"swiss typography 1957": "theme_swiss_typography",
+	"kyoto kintsugi":        "theme_kyoto_kintsugi",
+	"blueprint cyanotype":   "theme_blueprint_cyanotype",
+}
+
+// themeDisplayName returns the localized display name for a preset theme.
 func themeDisplayName(name string) string {
-	switch strings.ToLower(strings.TrimSpace(name)) {
-	case "liquid glass":
-		return "液态冰晶 (Liquid Glass)"
-	case "macbook scissor":
-		return "深空剪刀脚 (MacBook Scissor)"
-	case "dieter rams 1960":
-		return "博朗经典 (Dieter Rams)"
-	case "cyberpunk neon":
-		return "赛博霓虹 (Cyberpunk Neon)"
-	case "classic mechanical":
-		return "复古机械 (Classic Mechanical)"
-	case "ibm model m 1984":
-		return "传奇屈曲轴 (IBM Model M)"
-	case "minimal chalk":
-		return "极简粉笔白 (Minimal Chalk)"
-	case "obsidian oled":
-		return "黑曜极光 (Obsidian OLED)"
-	case "tokyo blossom":
-		return "东京落樱 (Tokyo Blossom)"
-	case "emerald matrix":
-		return "代码矩阵 (Emerald Matrix)"
-	case "sunset horizon":
-		return "暮光地平线 (Sunset Horizon)"
-	case "royal velvet":
-		return "皇家丝绒 (Royal Velvet)"
-	case "sony walkman 1979":
-		return "索尼经典 (Sony Walkman 1979)"
-	case "teenage op-1":
-		return "合成器先锋 (Teenage OP-1)"
-	case "amber cathode 1977":
-		return "琥珀终端 (Amber Cathode 1977)"
-	case "swiss typography 1957":
-		return "苏黎世平面 (Swiss Typography 1957)"
-	case "kyoto kintsugi":
-		return "京都金缮 (Kyoto Kintsugi)"
-	case "blueprint cyanotype":
-		return "工程蓝晒 (Blueprint Cyanotype)"
-	default:
-		th := theme.ThemeByName(name)
-		if th.DisplayName != "" {
-			return th.DisplayName
-		}
-		return name
+	if key, ok := themeNameKeys[strings.ToLower(strings.TrimSpace(name))]; ok {
+		return i18n.T(key)
 	}
+	th := theme.ThemeByName(name)
+	if th.DisplayName != "" {
+		return th.DisplayName
+	}
+	return name
 }
 
-// physicalStyleName returns a Chinese-first name for a keycap physical model.
+// themeDescription returns the localized one-line description for a preset theme.
+func themeDescription(name string) string {
+	if key, ok := themeNameKeys[strings.ToLower(strings.TrimSpace(name))]; ok {
+		return i18n.T(key + "_desc")
+	}
+	return theme.ThemeByName(name).Description
+}
+
+// mouseThemeKeys maps a mouse theme ID to its localization key.
+var mouseThemeKeys = map[string]string{
+	"neon_green":       "mouse_theme_neon_green",
+	"aurora_bicolor":   "mouse_theme_aurora",
+	"cyber_cyan":       "mouse_theme_cyber_cyan",
+	"obsidian_crimson": "mouse_theme_obsidian_crimson",
+	"deep_blue":        "mouse_theme_deep_blue",
+	"minimal_white":    "mouse_theme_minimal_white",
+}
+
+// mouseThemeDisplayName returns the localized label for a mouse color theme.
+func mouseThemeDisplayName(m theme.MouseThemeConfig) string {
+	if key, ok := mouseThemeKeys[m.ID]; ok {
+		return i18n.T(key)
+	}
+	if m.DisplayName != "" {
+		return m.DisplayName
+	}
+	return m.Name
+}
+
+// physicalStyleKeys maps a keycap physical model ID to its localization key.
+var physicalStyleKeys = map[string]string{
+	"minimal": "ui_style_minimal",
+	"laptop":  "ui_style_laptop",
+	"pbt":     "ui_style_pbt",
+	"glass":   "ui_style_glass",
+	"neon":    "ui_style_neon",
+	"retro":   "ui_style_retro",
+	"outline": "ui_style_outline",
+}
+
+// physicalStyleName returns the localized name for a keycap physical model.
 func physicalStyleName(id string) string {
-	switch id {
-	case "minimal":
-		return "极简扁平"
-	case "laptop":
-		return "剪刀脚"
-	case "pbt":
-		return "PBT 机械"
-	case "glass":
-		return "拟物玻璃"
-	case "neon":
-		return "霓虹发光"
-	case "retro":
-		return "复古终端"
-	case "outline":
-		return "极简线框"
-	default:
-		return "矮轴物理"
+	if key, ok := physicalStyleKeys[id]; ok {
+		return i18n.T(key)
 	}
+	return i18n.T("ui_style_lowprofile")
 }
 
-// travelDepthLabel returns human-readable physical stroke depth or kinetic mode.
+// travelDepthLabel returns the localized physical stroke depth or kinetic mode.
 func travelDepthLabel(t theme.ThemeConfig) string {
 	if t.HeldPhysics == theme.HeldPulse {
-		return "光压脉冲"
+		return i18n.T("ui_held_pulse")
 	}
-	return fmt.Sprintf("%.1fmm 轴体行程", t.EffectiveTravelDepth())
+	return i18n.TF("ui_travel_depth", t.EffectiveTravelDepth())
 }
 
-// styleStageLabel describes whether the physical model is inherited from the archetype or overridden.
+// styleStageLabel describes whether the physical model is inherited from the
+// archetype or explicitly overridden.
 func styleStageLabel(cfg config.AppConfig, t theme.ThemeConfig) string {
 	if cfg.Appearance.Style == "" {
-		return fmt.Sprintf("%s · 原型预设 (%s)", physicalStyleName(effectiveStyle(t, cfg)), travelDepthLabel(t))
+		return i18n.TF("ui_stage_preset", physicalStyleName(effectiveStyle(t, cfg)), travelDepthLabel(t))
 	}
-	return physicalStyleName(cfg.Appearance.Style) + " · 自定义覆盖"
+	return i18n.TF("ui_stage_override", physicalStyleName(cfg.Appearance.Style))
 }
 
 // formatShortcut renders the real configured global hotkey rather than a
@@ -239,6 +256,7 @@ type SettingsController struct {
 	colorDropdownOpen     bool
 	filterTab             string
 	previewNonce          int
+	contextSource         func() context.AppContext
 }
 
 // NewSettingsController creates a controller for the settings client window.
@@ -269,6 +287,26 @@ func (sc *SettingsController) updateConfig(fn func(*config.AppConfig)) {
 	err := sc.store.Update(fn)
 	_ = err
 	sc.Invalidate()
+}
+
+// SetContextSource installs a foreground-application snapshot source used by
+// the General tab's live "recognized application" preview.
+func (sc *SettingsController) SetContextSource(fn func() context.AppContext) {
+	sc.contextSource = fn
+}
+
+// ellipsize shortens a label on rune boundaries so CJK titles keep their
+// glyphs intact.
+func ellipsize(s string, maxRunes int) string {
+	s = strings.TrimSpace(s)
+	if maxRunes <= 0 {
+		return s
+	}
+	r := []rune(s)
+	if len(r) <= maxRunes {
+		return s
+	}
+	return string(r[:maxRunes-1]) + "…"
 }
 
 // Invalidate repaints the settings window when it is open.
@@ -536,7 +574,7 @@ func (sc *SettingsController) renderShowcaseStage(c *ui.Context, cfg config.AppC
 
 	stage.Children(func() {
 		ui.Row(c).Gap(28).AlignItems(ui.Center).Children(func() {
-			// Sample Chord 1: [ Ctrl ] + [ C ] -> [ 复制 Copy ]
+			// Sample Chord 1: [ Ctrl ] + [ C ] -> "Copy" intent subtitle
 			sampleChord1 := engine.DisplayChord{
 				ID: fmt.Sprintf("preview-%d-1", sc.previewNonce),
 				Keys: []engine.KeyCap{
@@ -547,7 +585,7 @@ func (sc *SettingsController) renderShowcaseStage(c *ui.Context, cfg config.AppC
 			}
 			renderChord(c, sampleChord1, currentTheme, cfg)
 
-			// Sample Chord 2: [ ⌘ Cmd ] + [ V ] -> [ 粘贴 Paste ]
+			// Sample Chord 2: [ ⌘ Cmd ] + [ V ] -> "Paste" intent subtitle
 			sampleChord2 := engine.DisplayChord{
 				ID: fmt.Sprintf("preview-%d-2", sc.previewNonce),
 				Keys: []engine.KeyCap{
@@ -571,13 +609,13 @@ func (sc *SettingsController) renderGeneralTab(
 ) {
 	ui.Text(c, i18n.T("general_title")).FontSize(20).Bold().TextColor(p.text)
 
-	// Group 1: 预设主题 (Preset Themes Floating Web Dropdown)
-	group("预设主题", func() {
+	// Group 1: Preset Themes (floating dropdown)
+	group(i18n.T("ui_group_preset_themes"), func() {
 		currentTheme := theme.ThemeByName(cfg.ThemePreset)
 		currentDisplay := themeDisplayName(currentTheme.Name)
 		themeChoice := cfg.ThemePreset
 
-		row("预设原型", "设计风格与物理微几何方案", func() {
+		row(i18n.T("ui_row_preset_archetype"), i18n.T("ui_row_preset_archetype_desc"), func() {
 			sel := ui.SelectBase(c, &themeChoice)
 			sel.Trigger.
 				Height(36).
@@ -714,8 +752,8 @@ func (sc *SettingsController) renderGeneralTab(
 		})
 
 		if cfg.General.Filter == "custom" {
-			row("自定义过滤名单", fmt.Sprintf("已启用 %d 个按键，点击打开自定义按键过滤矩阵", len(cfg.General.AllowedKeys)), func() {
-				if ui.Button(c.Key("open-custom-filter-btn"), "配置按键矩阵...").
+			row(i18n.T("ui_row_custom_filter_list"), i18n.TF("ui_custom_filter_list_desc", len(cfg.General.AllowedKeys)), func() {
+				if ui.Button(c.Key("open-custom-filter-btn"), i18n.T("ui_btn_configure_matrix")).
 					Padding(6, 14).
 					Radius(6).
 					Background(p.accent).
@@ -739,14 +777,14 @@ func (sc *SettingsController) renderGeneralTab(
 			}
 		})
 
-		row("单词合并", "连续键入字母合并为单词", func() {
+		row(i18n.T("ui_row_word_grouping"), i18n.T("ui_row_word_grouping_desc"), func() {
 			on := cfg.General.WordGrouping
 			if ui.Switch(c.Key("toggle-word-grouping"), &on).Changed() {
 				sc.updateConfig(func(ac *config.AppConfig) { ac.General.WordGrouping = on })
 			}
 		})
 
-		row(i18n.T("direction_title"), "历史按键排列方向", func() {
+		row(i18n.T("direction_title"), i18n.T("ui_direction_desc"), func() {
 			dirIdx := 1
 			if cfg.Appearance.FlexDirection == "row" {
 				dirIdx = 0
@@ -761,35 +799,35 @@ func (sc *SettingsController) renderGeneralTab(
 		})
 
 		if cfg.General.ShowEventHistory {
-			row("留存组数", "保留按键组数", func() {
+			row(i18n.T("ui_row_history_groups"), i18n.T("ui_row_history_groups_desc"), func() {
 				ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
 					if ui.Button(c.Key("hist-dec"), "−").Padding(4, 10).Radius(6).Clicked() && cfg.General.MaxHistory > 2 {
 						sc.updateConfig(func(ac *config.AppConfig) { ac.General.MaxHistory-- })
 					}
-					ui.Textf(c, "%d 组", cfg.General.MaxHistory).FontSize(13).Bold().TextColor(p.text)
+					ui.Textf(c, i18n.T("ui_groups_count"), cfg.General.MaxHistory).FontSize(13).Bold().TextColor(p.text)
 					if ui.Button(c.Key("hist-inc"), "+").Padding(4, 10).Radius(6).Clicked() && cfg.General.MaxHistory < 12 {
 						sc.updateConfig(func(ac *config.AppConfig) { ac.General.MaxHistory++ })
 					}
 				})
 			})
 		} else {
-			row("留存组数", "仅显示当前按键", func() {
+			row(i18n.T("ui_row_history_groups"), i18n.T("ui_row_history_groups_single_desc"), func() {
 				ui.Box(c).Padding(5, 10).Radius(6).Background(p.sidebar).Border(1, p.hairline).Children(func() {
-					ui.Text(c, "固定 1 组").FontSize(12.5).Bold().TextColor(p.muted)
+					ui.Text(c, i18n.T("ui_groups_fixed_one")).FontSize(12.5).Bold().TextColor(p.muted)
 				})
 			})
 		}
 	})
 
 	// Group 5: Shortcuts & Feedback
-	group("快捷键与音效", func() {
+	group(i18n.T("ui_group_shortcuts_audio"), func() {
 		row(i18n.T("toggle_shortcut"), i18n.T("toggle_shortcut_desc"), func() {
 			ui.Box(c).Background(p.sidebar).Border(1, p.hairline).Radius(6).Padding(6, 12).Children(func() {
 				ui.Text(c, formatShortcut(cfg.General.ToggleShortcut)).Bold().FontSize(12.5).TextColor(p.text)
 			})
 		})
 
-		row("按键音效", "敲击按键时播放反馈音效", func() {
+		row(i18n.T("ui_row_keystroke_audio"), i18n.T("ui_row_keystroke_audio_desc"), func() {
 			on := cfg.TactileAudio
 			if ui.Switch(c.Key("toggle-tactile-audio"), &on).Changed() {
 				sc.updateConfig(func(ac *config.AppConfig) { ac.TactileAudio = on })
@@ -903,19 +941,19 @@ func (sc *SettingsController) renderAppearanceTab(
 
 	// Group 2: Linger Duration & Margins
 	group(i18n.T("linger_title"), func() {
-		row("停留时长", "", func() {
+		row(i18n.T("ui_row_stay_duration"), "", func() {
 			ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
 				if ui.Button(c.Key("dur-dec"), "−0.5s").Padding(4, 8).Radius(6).Clicked() && cfg.General.LingerDurationMs > 1000 {
 					sc.updateConfig(func(ac *config.AppConfig) { ac.General.LingerDurationMs -= 500 })
 				}
-				ui.Textf(c, "%.1f 秒", float64(cfg.General.LingerDurationMs)/1000.0).FontSize(13).Bold().TextColor(p.text)
+				ui.Textf(c, i18n.T("ui_seconds"), float64(cfg.General.LingerDurationMs)/1000.0).FontSize(13).Bold().TextColor(p.text)
 				if ui.Button(c.Key("dur-inc"), "+0.5s").Padding(4, 8).Radius(6).Clicked() && cfg.General.LingerDurationMs < 10000 {
 					sc.updateConfig(func(ac *config.AppConfig) { ac.General.LingerDurationMs += 500 })
 				}
 			})
 		})
 
-		row("锁定等比边距", "水平与垂直边距联动", func() {
+		row(i18n.T("ui_row_margin_link"), i18n.T("ui_row_margin_link_desc"), func() {
 			linked := sc.marginLinked
 			if ui.Switch(c.Key("toggle-margin-link"), &linked).Changed() {
 				sc.marginLinked = linked
@@ -925,7 +963,7 @@ func (sc *SettingsController) renderAppearanceTab(
 			}
 		})
 
-		row("水平边距 (X)", "", func() {
+		row(i18n.T("ui_row_margin_x"), "", func() {
 			ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
 				if ui.Button(c.Key("mx-dec"), "−10").Padding(4, 8).Radius(6).Clicked() && cfg.Appearance.MarginX > 0 {
 					sc.updateConfig(func(ac *config.AppConfig) {
@@ -947,7 +985,7 @@ func (sc *SettingsController) renderAppearanceTab(
 			})
 		})
 
-		row("垂直边距 (Y)", "", func() {
+		row(i18n.T("ui_row_margin_y"), "", func() {
 			ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
 				if ui.Button(c.Key("my-dec"), "−10").Padding(4, 8).Radius(6).Clicked() && cfg.Appearance.MarginY > 0 {
 					sc.updateConfig(func(ac *config.AppConfig) {
@@ -972,9 +1010,16 @@ func (sc *SettingsController) renderAppearanceTab(
 
 	// Group 3: Transition Animations & Physics Toggle
 	group(i18n.T("anim_title"), func() {
-		row("动效形态", "入场与退场运动风格", func() {
+		row(i18n.T("ui_row_anim_style"), i18n.T("ui_row_anim_style_desc"), func() {
 			anims := []string{"spring", "fade", "slide", "float", "zoom", "none"}
-			labels := []string{"弹性微动", "优雅渐隐", "顺势滑入", "浮动漂移", "聚焦缩放", "纯粹静态"}
+			labels := []string{
+				i18n.T("ui_anim_spring"),
+				i18n.T("ui_anim_fade"),
+				i18n.T("ui_anim_slide"),
+				i18n.T("ui_anim_float"),
+				i18n.T("ui_anim_zoom"),
+				i18n.T("ui_anim_none"),
+			}
 			animIdx := 0
 			cur := cfg.Appearance.Animation
 			if cur == "" {
@@ -997,7 +1042,7 @@ func (sc *SettingsController) renderAppearanceTab(
 		})
 
 		pressFxOn := !cfg.Appearance.DisablePressAnimation && cfg.Appearance.Animation != "none"
-		row("按键行程与高亮", "轴体下潜与材质微受力反馈", func() {
+		row(i18n.T("ui_row_press_fx"), i18n.T("ui_row_press_fx_desc"), func() {
 			if ui.Switch(c.Key("press-fx-toggle"), &pressFxOn).Changed() {
 				sc.updateConfig(func(ac *config.AppConfig) {
 					ac.Appearance.DisablePressAnimation = !pressFxOn
@@ -1010,7 +1055,7 @@ func (sc *SettingsController) renderAppearanceTab(
 		})
 
 		if cfg.Appearance.Animation != "none" {
-			row("响应节奏", "过渡动画持续时间", func() {
+			row(i18n.T("ui_row_anim_duration"), i18n.T("ui_row_anim_duration_desc"), func() {
 				ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
 					if ui.Button(c.Key("anim-dur-dec"), "−50ms").Padding(4, 8).Radius(6).Clicked() && cfg.Appearance.AnimationDuration > 0.10 {
 						sc.updateConfig(func(ac *config.AppConfig) {
@@ -1067,27 +1112,27 @@ func (sc *SettingsController) renderKeycapTab(
 			id   string
 			name string
 		}{
-			{"", "智能跟随原型 (Signature Archetype)"},
-			{"lowprofile", "矮轴物理 (Low Profile · 2.0mm)"},
-			{"minimal", "极简扁平 (Minimal Flat · 1.6mm)"},
-			{"laptop", "剪刀脚 (Laptop Scissor · 1.2mm)"},
-			{"pbt", "PBT 机械 (PBT Mechanical · 3.0mm)"},
-			{"glass", "拟物玻璃 (Liquid Glass · 光脉冲)"},
-			{"neon", "霓虹发光 (Neon Glow · 光晕脉冲)"},
-			{"retro", "复古终端 (Retro CRT · 3.8mm)"},
-			{"outline", "极简线框 (Wireframe Outline · 极简)"},
+			{"", i18n.T("ui_keycap_style_auto")},
+			{"lowprofile", i18n.T("ui_keycap_style_lowprofile")},
+			{"minimal", i18n.T("ui_keycap_style_minimal")},
+			{"laptop", i18n.T("ui_keycap_style_laptop")},
+			{"pbt", i18n.T("ui_keycap_style_pbt")},
+			{"glass", i18n.T("ui_keycap_style_glass")},
+			{"neon", i18n.T("ui_keycap_style_neon")},
+			{"retro", i18n.T("ui_keycap_style_retro")},
+			{"outline", i18n.T("ui_keycap_style_outline")},
 		}
 
-		currentStyleName := fmt.Sprintf("%s · 原型预设 (%s)", physicalStyleName(effectiveStyle(currentTheme, cfg)), travelDepthLabel(currentTheme))
+		currentStyleName := i18n.TF("ui_stage_preset", physicalStyleName(effectiveStyle(currentTheme, cfg)), travelDepthLabel(currentTheme))
 		styleChoice := cfg.Appearance.Style
 		for _, st := range styles {
 			if st.id == cfg.Appearance.Style && st.id != "" {
-				currentStyleName = st.name + " · 自定义"
+				currentStyleName = st.name + i18n.T("ui_keycap_style_custom_suffix")
 				break
 			}
 		}
 
-		row(i18n.T("keycap_model"), "微调物理微几何与轴体行程", func() {
+		row(i18n.T("keycap_model"), i18n.T("ui_keycap_model_desc"), func() {
 			sel := ui.SelectBase(c, &styleChoice)
 			sel.Trigger.
 				Height(36).
@@ -1155,14 +1200,14 @@ func (sc *SettingsController) renderKeycapTab(
 	})
 
 	// Group 2: 14 Color Palettes (Floating Popover Web Dropdown with Preview)
-	group("预设色盘", func() {
+	group(i18n.T("ui_group_color_palettes"), func() {
 		// An empty palette means "inherit the theme". It is a first-class choice,
 		// not an unexplained "custom" state on a fresh installation.
-		paletteChoices := append([]ColorSchemePreset{{Name: "跟随主题 (Theme Default)"}}, MasterColorSchemes...)
-		currentSchemeName := "跟随主题 (Theme Default)"
+		paletteChoices := append([]ColorSchemePreset{{Name: i18n.T("ui_palette_theme_default")}}, MasterColorSchemes...)
+		currentSchemeName := i18n.T("ui_palette_theme_default")
 		paletteChoice := cfg.Color.Color
 		if cfg.Color.Color != "" {
-			currentSchemeName = "自定义配色"
+			currentSchemeName = i18n.T("ui_palette_custom")
 			for _, sch := range MasterColorSchemes {
 				if strings.EqualFold(cfg.Color.Color, sch.Primary) {
 					currentSchemeName = sch.Name
@@ -1172,7 +1217,7 @@ func (sc *SettingsController) renderKeycapTab(
 			}
 		}
 
-		row("键帽配色", "", func() {
+		row(i18n.T("ui_row_keycap_color"), "", func() {
 			sel := ui.SelectBase(c, &paletteChoice)
 			sel.Trigger.
 				Height(36).
@@ -1281,7 +1326,7 @@ func (sc *SettingsController) renderKeycapTab(
 	group(i18n.T("text_formatting"), func() {
 		row(i18n.T("text_caps"), "", func() {
 			caps := []string{"uppercase", "capitalize", "lowercase"}
-			labels := []string{"全大写 (AA)", "首字母大写 (Aa)", "全小写 (aa)"}
+			labels := []string{i18n.T("caps_upper"), i18n.T("caps_cap"), i18n.T("caps_lower")}
 			capIdx := 1
 			for i, cp := range caps {
 				if cp == cfg.Text.Caps {
@@ -1296,7 +1341,7 @@ func (sc *SettingsController) renderKeycapTab(
 
 		row(i18n.T("text_variant"), "", func() {
 			vars := []string{"text", "text-short", "icon"}
-			labels := []string{"完整文字", "简写文字", "纯图标"}
+			labels := []string{i18n.T("variant_text"), i18n.T("variant_short"), i18n.T("variant_icon")}
 			varIdx := 1
 			for i, v := range vars {
 				if v == cfg.Text.Variant {
@@ -1309,12 +1354,12 @@ func (sc *SettingsController) renderKeycapTab(
 			}
 		})
 
-		row("字体字号", "", func() {
+		row(i18n.T("ui_row_font_size"), "", func() {
 			size := cfg.Text.Size
 			suffix := ""
 			if size <= 0 {
 				size = int(effectiveFontSize(currentTheme, cfg) + 0.5)
-				suffix = " · 主题"
+				suffix = i18n.T("ui_suffix_theme")
 			}
 			ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
 				if ui.Button(c.Key("ts-dec"), "−").Padding(4, 8).Radius(6).Clicked() && size > 16 {
@@ -1330,28 +1375,28 @@ func (sc *SettingsController) renderKeycapTab(
 
 	// Group 4: Layout & Elements
 	group(i18n.T("display_elements"), func() {
-		row("按键图标", "显示修饰键图标", func() {
+		row(i18n.T("ui_row_key_icon"), i18n.T("ui_row_key_icon_desc"), func() {
 			on := cfg.Layout.ShowIcon
 			if ui.Switch(c.Key("toggle-icon"), &on).Changed() {
 				sc.updateConfig(func(ac *config.AppConfig) { ac.Layout.ShowIcon = on })
 			}
 		})
 
-		row("特殊符号", "显示回车、退格等特殊符号", func() {
+		row(i18n.T("ui_row_special_symbol"), i18n.T("ui_row_special_symbol_desc"), func() {
 			on := cfg.Layout.ShowSymbol
 			if ui.Switch(c.Key("toggle-symbol"), &on).Changed() {
 				sc.updateConfig(func(ac *config.AppConfig) { ac.Layout.ShowSymbol = on })
 			}
 		})
 
-		row("连击倍率", "连续敲击同一按键显示次数", func() {
+		row(i18n.T("ui_row_press_count"), i18n.T("ui_row_press_count_desc"), func() {
 			on := cfg.Layout.ShowPressCount
 			if ui.Switch(c.Key("toggle-press-count"), &on).Changed() {
 				sc.updateConfig(func(ac *config.AppConfig) { ac.Layout.ShowPressCount = on })
 			}
 		})
 
-		row("修饰键高亮", "为修饰键应用强调色", func() {
+		row(i18n.T("ui_row_mod_highlight"), i18n.T("ui_row_mod_highlight_desc"), func() {
 			on := cfg.Modifier.Highlight
 			if ui.Switch(c.Key("toggle-mod-hl"), &on).Changed() {
 				sc.updateConfig(func(ac *config.AppConfig) { ac.Modifier.Highlight = on })
@@ -1361,14 +1406,14 @@ func (sc *SettingsController) renderKeycapTab(
 
 	// Group 5: Border & Corner Radius
 	group(i18n.T("border_title"), func() {
-		row("键帽边框", "", func() {
+		row(i18n.T("ui_row_keycap_border"), "", func() {
 			on := cfg.Border.Enabled
 			if ui.Switch(c.Key("toggle-border"), &on).Changed() {
 				sc.updateConfig(func(ac *config.AppConfig) { ac.Border.Enabled = on })
 			}
 		})
 
-		row("边框粗细", "", func() {
+		row(i18n.T("ui_row_border_width"), "", func() {
 			ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
 				if ui.Button(c.Key("bw-dec"), "−").Padding(4, 8).Radius(6).Clicked() && cfg.Border.Width > 1 {
 					sc.updateConfig(func(ac *config.AppConfig) { ac.Border.Width-- })
@@ -1380,12 +1425,12 @@ func (sc *SettingsController) renderKeycapTab(
 			})
 		})
 
-		row("倒角圆角", "", func() {
+		row(i18n.T("ui_row_border_radius"), "", func() {
 			radius := cfg.Border.Radius
 			suffix := ""
 			if radius <= 0 {
 				radius = float64(effectiveRadius(currentTheme, cfg))
-				suffix = " · 主题"
+				suffix = i18n.T("ui_suffix_theme")
 			}
 			ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
 				if ui.Button(c.Key("br-dec"), "−").Padding(4, 8).Radius(6).Clicked() && radius > 2 {
@@ -1399,13 +1444,67 @@ func (sc *SettingsController) renderKeycapTab(
 		})
 	})
 
-	// Group 6: Intelligent Action Subtitles
-	group("动作提示", func() {
-		row("动作提示字幕", "识别复制、粘贴等常用操作意图", func() {
+	// Group 6: Intelligent Action Subtitles & Context Awareness
+	group(i18n.T("ctx_group_title"), func() {
+		row(i18n.T("ctx_smart_title"), i18n.T("ctx_smart_desc"), func() {
+			on := cfg.SemanticContext
+			if ui.Switch(c.Key("toggle-semantic-context"), &on).Changed() {
+				sc.updateConfig(func(ac *config.AppConfig) { ac.SemanticContext = on })
+			}
+		})
+
+		row(i18n.T("ctx_sub_title"), i18n.T("ctx_sub_desc"), func() {
 			on := cfg.SemanticSub
 			if ui.Switch(c.Key("toggle-semantic-sub"), &on).Changed() {
 				sc.updateConfig(func(ac *config.AppConfig) { ac.SemanticSub = on })
 			}
+		})
+
+		row(i18n.T("ctx_badge_title"), i18n.T("ctx_badge_desc"), func() {
+			on := cfg.ShowAppBadge
+			if ui.Switch(c.Key("toggle-app-badge"), &on).Changed() {
+				sc.updateConfig(func(ac *config.AppConfig) { ac.ShowAppBadge = on })
+			}
+		})
+
+		appCtx := context.AppContext{}
+		if sc.contextSource != nil {
+			appCtx = sc.contextSource()
+		}
+		appLabel := appCtx.DisplayName()
+		appDesc := ""
+		if appCtx.Exe != "" {
+			appDesc = appCtx.Exe
+		}
+		if appCtx.Title != "" {
+			if appDesc != "" {
+				appDesc += " · "
+			}
+			appDesc += ellipsize(appCtx.Title, 42)
+		}
+		if appDesc == "" {
+			appDesc = i18n.T("ctx_no_app_desc")
+		}
+		if appLabel == "" {
+			appLabel = i18n.T("ctx_unknown_app")
+		}
+		row(i18n.T("ctx_current_app"), appDesc, func() {
+			ui.Row(c).AlignItems(ui.Center).Gap(6).Children(func() {
+				if appCtx.Category != context.CategoryUnknown {
+					ui.Box(c).Padding(3, 7).Radius(5).Background(p.sidebar).Border(1, p.hairline).Children(func() {
+						ui.Text(c, appCtx.Category.DisplayName()).FontSize(10.5).Bold().TextColor(p.muted)
+					})
+				}
+				ui.Box(c).Padding(5, 10).Radius(6).Background(p.sidebar).Border(1, p.hairline).Children(func() {
+					ui.Text(c, appLabel).FontSize(12.5).Bold().SingleLine().TextColor(p.text)
+				})
+			})
+		})
+
+		row(i18n.T("ctx_custom_title"), i18n.T("ctx_custom_desc"), func() {
+			ui.Box(c).Padding(5, 10).Radius(6).Background(p.sidebar).Border(1, p.hairline).Children(func() {
+				ui.Textf(c, "%d", len(cfg.CustomShortcuts)).FontSize(12.5).Bold().TextColor(p.text)
+			})
 		})
 	})
 }
@@ -1420,12 +1519,12 @@ func (sc *SettingsController) renderMouseTab(
 ) {
 	ui.Text(c, i18n.T("mouse_title")).FontSize(20).Bold().TextColor(p.text)
 
-	// Group 1: 鼠标预设主题 (Preset Mouse Themes)
-	group("鼠标主题", func() {
+	// Group 1: Preset mouse themes
+	group(i18n.T("ui_group_mouse_theme"), func() {
 		currentMTheme := theme.MouseThemeByID(cfg.Mouse.ThemePreset)
 		mChoice := currentMTheme.ID
 
-		row("预设主题", "光圈与按键指示色彩风格", func() {
+		row(i18n.T("ui_row_preset_theme"), i18n.T("ui_row_preset_theme_desc"), func() {
 			sel := ui.SelectBase(c, &mChoice)
 			sel.Trigger.
 				Height(36).
@@ -1441,7 +1540,7 @@ func (sc *SettingsController) renderMouseTab(
 						ui.Box(c).Size(6, 10).Radius(2).Background(ui.Hex(currentMTheme.WheelColor))
 						ui.Box(c).Size(9, 14).Radius(3).Background(ui.Hex(currentMTheme.RightColor))
 					})
-					ui.Text(c, currentMTheme.DisplayName).FontSize(13).Bold().TextColor(p.text)
+					ui.Text(c, mouseThemeDisplayName(currentMTheme)).FontSize(13).Bold().TextColor(p.text)
 					ui.Icon(c, iconChevronDown).Size(12, 12).TextColor(p.muted)
 				})
 
@@ -1476,7 +1575,7 @@ func (sc *SettingsController) renderMouseTab(
 								ui.Box(c).Size(6, 10).Radius(2).Background(ui.Hex(themeItem.WheelColor))
 								ui.Box(c).Size(9, 14).Radius(3).Background(ui.Hex(themeItem.RightColor))
 							})
-							ui.Text(c, themeItem.DisplayName).FontSize(12.5).TextColor(p.text).Grow(1)
+							ui.Text(c, mouseThemeDisplayName(themeItem)).FontSize(12.5).TextColor(p.text).Grow(1)
 							if themeItem.ID == currentMTheme.ID {
 								ui.Text(c, "✓").FontSize(13).Bold().TextColor(p.accent)
 							}
@@ -1500,21 +1599,21 @@ func (sc *SettingsController) renderMouseTab(
 
 	// Group 2: Cursor Highlight & Ring
 	group(i18n.T("mouse_click_ripple"), func() {
-		row("点击光圈", "按下按键时呈现涟漪光圈", func() {
+		row(i18n.T("ui_row_click_ring"), i18n.T("ui_row_click_ring_desc"), func() {
 			on := cfg.Mouse.ShowClicks
 			if ui.Switch(c.Key("toggle-mouse-clicks"), &on).Changed() {
 				sc.updateConfig(func(ac *config.AppConfig) { ac.Mouse.ShowClicks = on })
 			}
 		})
 
-		row("常驻光圈", "始终在光标周围显示", func() {
+		row(i18n.T("ui_row_always_ring"), i18n.T("ui_row_always_ring_desc"), func() {
 			on := cfg.Mouse.KeepHighlight
 			if ui.Switch(c.Key("toggle-always-hl"), &on).Changed() {
 				sc.updateConfig(func(ac *config.AppConfig) { ac.Mouse.KeepHighlight = on })
 			}
 		})
 
-		row("光圈尺寸", "", func() {
+		row(i18n.T("ui_row_ring_size"), "", func() {
 			ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
 				if ui.Button(c.Key("ms-dec"), "−10").Padding(4, 8).Radius(6).Clicked() && cfg.Mouse.Size > 40 {
 					sc.updateConfig(func(ac *config.AppConfig) { ac.Mouse.Size -= 10 })
@@ -1529,21 +1628,21 @@ func (sc *SettingsController) renderMouseTab(
 
 	// Group 2: Mouse Button & Wheel Indicator
 	group(i18n.T("mouse_indicator"), func() {
-		row("按键指示器", "在光标旁显示按键与滚轮状态", func() {
+		row(i18n.T("ui_row_button_indicator"), i18n.T("ui_row_button_indicator_desc"), func() {
 			on := cfg.Mouse.ShowIndicator
 			if ui.Switch(c.Key("toggle-indicator"), &on).Changed() {
 				sc.updateConfig(func(ac *config.AppConfig) { ac.Mouse.ShowIndicator = on })
 			}
 		})
 
-		row("常驻显示", "无按键时仍保持常驻", func() {
+		row(i18n.T("ui_row_keep_indicator"), i18n.T("ui_row_keep_indicator_desc"), func() {
 			on := cfg.Mouse.KeepIndicator
 			if ui.Switch(c.Key("toggle-keep-ind"), &on).Changed() {
 				sc.updateConfig(func(ac *config.AppConfig) { ac.Mouse.KeepIndicator = on })
 			}
 		})
 
-		row("指示器大小", "", func() {
+		row(i18n.T("ui_row_indicator_size"), "", func() {
 			ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
 				if ui.Button(c.Key("is-dec"), "−5").Padding(4, 8).Radius(6).Clicked() && cfg.Mouse.IndicatorSize > 20 {
 					sc.updateConfig(func(ac *config.AppConfig) { ac.Mouse.IndicatorSize -= 5 })
@@ -1555,7 +1654,7 @@ func (sc *SettingsController) renderMouseTab(
 			})
 		})
 
-		row("光标偏移", "", func() {
+		row(i18n.T("ui_row_indicator_offset"), "", func() {
 			ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
 				if ui.Button(c.Key("io-dec"), "−5").Padding(4, 8).Radius(6).Clicked() && cfg.Mouse.IndicatorOffsetX > 10 {
 					sc.updateConfig(func(ac *config.AppConfig) {
@@ -1573,7 +1672,7 @@ func (sc *SettingsController) renderMouseTab(
 			})
 		})
 
-		row("高亮保留时长", "按键与滚轮触发后的展示时长", func() {
+		row(i18n.T("ui_row_click_linger"), i18n.T("ui_row_click_linger_desc"), func() {
 			linger := cfg.Mouse.ClickLingerMs
 			if linger <= 0 {
 				linger = 180
@@ -1591,8 +1690,8 @@ func (sc *SettingsController) renderMouseTab(
 	})
 
 	// Group 3: Event & Drag
-	group("手势与拖拽", func() {
-		row("拖拽阈值", "移动超过该距离识别为拖拽", func() {
+	group(i18n.T("ui_group_gesture_drag"), func() {
+		row(i18n.T("ui_row_drag_threshold"), i18n.T("ui_row_drag_threshold_desc"), func() {
 			ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
 				if ui.Button(c.Key("dt-dec"), "−10").Padding(4, 8).Radius(6).Clicked() && cfg.General.DragThreshold > 10 {
 					sc.updateConfig(func(ac *config.AppConfig) { ac.General.DragThreshold -= 10 })
@@ -1615,16 +1714,16 @@ func (sc *SettingsController) renderAboutTab(
 ) {
 	ui.Text(c, i18n.T("tab_about")).FontSize(20).Bold().TextColor(p.text)
 
-	group("系统信息", func() {
+	group(i18n.T("ui_group_system_info"), func() {
 		row(i18n.T("app_name"), i18n.T("about_desc"), func() {})
-		row("渲染后端", i18n.T("renderer_architecture"), func() {})
-		row("技术底座", i18n.T("engine_architecture"), func() {})
-		row("灵感来源", i18n.T("original_credits"), func() {})
-		row("设计理念", i18n.T("about_philosophy"), func() {})
+		row(i18n.T("ui_row_renderer"), i18n.T("renderer_architecture"), func() {})
+		row(i18n.T("ui_row_engine"), i18n.T("engine_architecture"), func() {})
+		row(i18n.T("ui_row_inspiration"), i18n.T("original_credits"), func() {})
+		row(i18n.T("ui_row_philosophy"), i18n.T("about_philosophy"), func() {})
 	})
 
-	group("配置管理", func() {
-		row("恢复出厂设置", "还原所有设置项至初始参数", func() {
+	group(i18n.T("ui_group_config_management"), func() {
+		row(i18n.T("ui_row_factory_reset"), i18n.T("ui_row_factory_reset_desc"), func() {
 			if ui.Button(c.Key("btn-reset-factory"), i18n.T("reset_defaults")).
 				Padding(8, 16).
 				Radius(8).
@@ -1730,7 +1829,7 @@ func (sc *SettingsController) renderAlignmentSelector(c *ui.Context, cfg config.
 								Children(func() {
 									ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
 										ui.Icon(c, iconMonitor).Size(10, 10).TextColor(p.muted)
-										ui.Text(c, "主显示器").FontSize(8.5).Bold().TextColor(p.text)
+										ui.Text(c, i18n.T("ui_display_primary")).FontSize(8.5).Bold().TextColor(p.text)
 									})
 									ui.Text(c, "100%").FontSize(7.5).TextColor(p.muted)
 								})
@@ -1895,18 +1994,18 @@ func (sc *SettingsController) renderResetConfirmDialog(c *ui.Context, p palette)
 							ui.Icon(c, iconReset).Size(22, 22).TextColor(ui.Hex("#ff3b30"))
 						})
 						ui.Column(c).Gap(2).Children(func() {
-							ui.Text(c, "确认恢复出厂设置？").FontSize(16).Bold().TextColor(p.text)
-							ui.Text(c, "此操作不可撤销").FontSize(11.5).TextColor(p.muted)
+							ui.Text(c, i18n.T("ui_reset_confirm_title")).FontSize(16).Bold().TextColor(p.text)
+							ui.Text(c, i18n.T("ui_reset_confirm_sub")).FontSize(11.5).TextColor(p.muted)
 						})
 					})
 
-					ui.Text(c, "将重置所有自定义键帽颜色、9 宫格定位、过滤策略、快捷键与动画过渡风格，立即还原为 Cue 官方出厂标准参数。").
+					ui.Text(c, i18n.T("ui_reset_confirm_body")).
 						FontSize(13).
 						TextColor(p.muted).
 						LineHeight(1.5)
 
 					ui.Row(c).Justify(ui.End).Gap(10).Margin(8, 0, 0, 0).Children(func() {
-						if ui.Button(c.Key("cancel-reset-btn"), "取消").
+						if ui.Button(c.Key("cancel-reset-btn"), i18n.T("ui_btn_cancel")).
 							Padding(8, 16).
 							Radius(8).
 							Background(p.sidebar).
@@ -1918,7 +2017,7 @@ func (sc *SettingsController) renderResetConfirmDialog(c *ui.Context, p palette)
 							}
 						}
 
-						if ui.Button(c.Key("confirm-reset-btn"), "确认恢复出厂").
+						if ui.Button(c.Key("confirm-reset-btn"), i18n.T("ui_btn_confirm_reset")).
 							Padding(8, 18).
 							Radius(8).
 							Background(ui.Hex("#ff3b30")).
@@ -2032,10 +2131,10 @@ func (sc *SettingsController) renderCustomFilterModal(c *ui.Context, cfg config.
 					// Header
 					ui.Row(c).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
 						ui.Column(c).Gap(2).Children(func() {
-							ui.Text(c, "自定义按键过滤面板 (Custom Filter)").FontSize(16).Bold().TextColor(p.text)
-							ui.Text(c, "高亮键位将在屏幕上正常呈现，暗色键位将被静音过滤").FontSize(11.5).TextColor(p.muted)
+							ui.Text(c, i18n.T("ui_filter_modal_title")).FontSize(16).Bold().TextColor(p.text)
+							ui.Text(c, i18n.T("ui_filter_modal_desc")).FontSize(11.5).TextColor(p.muted)
 						})
-						if ui.Button(c.Key("close-filter-modal"), "✕ 完成").Padding(6, 14).Radius(6).Background(p.accent).TextColor(p.onAccent).Bold().Clicked() {
+						if ui.Button(c.Key("close-filter-modal"), i18n.T("ui_btn_done")).Padding(6, 14).Radius(6).Background(p.accent).TextColor(p.onAccent).Bold().Clicked() {
 							sc.showCustomFilterModal = false
 							if sc.window != nil {
 								sc.window.Invalidate()
@@ -2047,7 +2146,7 @@ func (sc *SettingsController) renderCustomFilterModal(c *ui.Context, cfg config.
 					ui.Row(c).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
 						// 3 Virtual Tabs
 						tabs := []string{"Keyboard", "Mouse", "Numpad"}
-						tabLabels := []string{"键盘 (Keyboard)", "鼠标 (Mouse)", "数字键盘 (Numpad)"}
+						tabLabels := []string{i18n.T("ui_filter_tab_keyboard"), i18n.T("ui_filter_tab_mouse"), i18n.T("ui_filter_tab_numpad")}
 						tabIdx := 0
 						for i, tb := range tabs {
 							if tb == sc.filterTab {
@@ -2066,24 +2165,24 @@ func (sc *SettingsController) renderCustomFilterModal(c *ui.Context, cfg config.
 							allAlpha := []string{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9"}
 							allMods := []string{"Ctrl", "Shift", "Alt", "Win"}
 
-							if ui.Button(c.Key("filter-all-btn"), "全选").Padding(4, 9).Radius(6).Background(p.sidebar).TextColor(p.text).FontSize(11).Clicked() {
+							if ui.Button(c.Key("filter-all-btn"), i18n.T("Select All")).Padding(4, 9).Radius(6).Background(p.sidebar).TextColor(p.text).FontSize(11).Clicked() {
 								allCommon := append(append([]string{}, allAlpha...), allMods...)
 								allCommon = append(allCommon, "Enter", "Space", "Backspace", "Tab", "Esc", "Insert", "Delete", "Home", "End", "PageUp", "PageDown", "Up", "Down", "Left", "Right", "Left Click", "Right Click", "Middle Click", "Drag", "Scroll Up", "Scroll Down")
 								sc.updateConfig(func(ac *config.AppConfig) {
 									ac.General.AllowedKeys = allCommon
 								})
 							}
-							if ui.Button(c.Key("filter-clear-btn"), "清空").Padding(4, 9).Radius(6).Background(p.sidebar).TextColor(p.text).FontSize(11).Clicked() {
+							if ui.Button(c.Key("filter-clear-btn"), i18n.T("ui_filter_clear")).Padding(4, 9).Radius(6).Background(p.sidebar).TextColor(p.text).FontSize(11).Clicked() {
 								sc.updateConfig(func(ac *config.AppConfig) {
 									ac.General.AllowedKeys = []string{}
 								})
 							}
-							if ui.Button(c.Key("filter-mods-btn"), "仅修饰键").Padding(4, 9).Radius(6).Background(p.sidebar).TextColor(p.text).FontSize(11).Clicked() {
+							if ui.Button(c.Key("filter-mods-btn"), i18n.T("ui_filter_mods_only")).Padding(4, 9).Radius(6).Background(p.sidebar).TextColor(p.text).FontSize(11).Clicked() {
 								sc.updateConfig(func(ac *config.AppConfig) {
 									ac.General.AllowedKeys = allMods
 								})
 							}
-							if ui.Button(c.Key("filter-alpha-btn"), "字母与数字").Padding(4, 9).Radius(6).Background(p.sidebar).TextColor(p.text).FontSize(11).Clicked() {
+							if ui.Button(c.Key("filter-alpha-btn"), i18n.T("ui_filter_alpha_num")).Padding(4, 9).Radius(6).Background(p.sidebar).TextColor(p.text).FontSize(11).Clicked() {
 								sc.updateConfig(func(ac *config.AppConfig) {
 									ac.General.AllowedKeys = allAlpha
 								})
@@ -2106,18 +2205,18 @@ func (sc *SettingsController) renderCustomFilterModal(c *ui.Context, cfg config.
 								// Mouse Visual Matrix (Cue original mouse silhouette)
 								ui.Row(c.Key("mouse-filter-matrix")).Gap(18).AlignItems(ui.Center).Children(func() {
 									// Left Click Button
-									sc.renderKeycapButton(c, "Left Click", "左键 Left", 64, 48, 0, cfg, p)
+									sc.renderKeycapButton(c, "Left Click", i18n.T("ui_mouse_label_left"), 64, 48, 0, cfg, p)
 
 									// Center Column (Middle, Scroll, Drag)
 									ui.Column(c).Gap(6).AlignItems(ui.Center).Children(func() {
-										sc.renderKeycapButton(c, "Middle Click", "中键 Middle", 80, 32, 0, cfg, p)
-										sc.renderKeycapButton(c, "Scroll Up", "滚轮向上 ↑", 80, 30, 0, cfg, p)
-										sc.renderKeycapButton(c, "Scroll Down", "滚轮向下 ↓", 80, 30, 0, cfg, p)
-										sc.renderKeycapButton(c, "Drag", "鼠标拖拽 Drag", 80, 32, 0, cfg, p)
+										sc.renderKeycapButton(c, "Middle Click", i18n.T("ui_mouse_label_middle"), 80, 32, 0, cfg, p)
+										sc.renderKeycapButton(c, "Scroll Up", i18n.T("ui_mouse_label_scroll_up"), 80, 30, 0, cfg, p)
+										sc.renderKeycapButton(c, "Scroll Down", i18n.T("ui_mouse_label_scroll_down"), 80, 30, 0, cfg, p)
+										sc.renderKeycapButton(c, "Drag", i18n.T("ui_mouse_label_drag"), 80, 32, 0, cfg, p)
 									})
 
 									// Right Click Button
-									sc.renderKeycapButton(c, "Right Click", "右键 Right", 64, 48, 0, cfg, p)
+									sc.renderKeycapButton(c, "Right Click", i18n.T("ui_mouse_label_right"), 64, 48, 0, cfg, p)
 								})
 
 							case "Numpad":

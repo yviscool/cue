@@ -36,11 +36,11 @@ const SampleRate = 44100
 type SpatialZone int
 
 const (
-	ZoneFarLeft SpatialZone = iota // pan ≈ -0.65 (Esc, Tab, Caps, ShiftL, A, Q, Z)
-	ZoneMidLeft                    // pan ≈ -0.30 (W, S, E, D, R, F, 2, 3, 4)
-	ZoneCenter                     // pan ≈ 0.00 (T, G, B, Y, H, N, Space)
-	ZoneMidRight                   // pan ≈ +0.30 (U, J, I, K, O, L, M)
-	ZoneFarRight                   // pan ≈ +0.65 (P, Enter, Backspace, Del, ShiftR)
+	ZoneFarLeft     SpatialZone = iota // pan ≈ -0.65 (Esc, Tab, Caps, ShiftL, A, Q, Z)
+	ZoneMidLeft                        // pan ≈ -0.30 (W, S, E, D, R, F, 2, 3, 4)
+	ZoneCenter                         // pan ≈ 0.00 (T, G, B, Y, H, N, Space)
+	ZoneMidRight                       // pan ≈ +0.30 (U, J, I, K, O, L, M)
+	ZoneFarRight                       // pan ≈ +0.65 (P, Enter, Backspace, Del, ShiftR)
 	numSpatialZones = 5
 )
 

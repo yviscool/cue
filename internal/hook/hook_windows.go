@@ -24,7 +24,7 @@ var (
 	procDispatchMessageW    = user32.NewProc("DispatchMessageW")
 	procPostThreadMessageW  = user32.NewProc("PostThreadMessageW")
 	procPeekMessageW        = user32.NewProc("PeekMessageW")
-	procGetAsyncKeyState     = user32.NewProc("GetAsyncKeyState")
+	procGetAsyncKeyState    = user32.NewProc("GetAsyncKeyState")
 
 	procGetCurrentThreadId = kernel32.NewProc("GetCurrentThreadId")
 	procGetModuleHandleW   = kernel32.NewProc("GetModuleHandleW")
@@ -106,10 +106,10 @@ type winMsg struct {
 
 // Global hook registry to avoid exhausting Windows callback slots.
 var (
-	registryMu      sync.RWMutex
-	hookRegistry    = make(map[*windowsHook]struct{})
-	initOnce        sync.Once
-	kbdCallbackPtr  uintptr
+	registryMu       sync.RWMutex
+	hookRegistry     = make(map[*windowsHook]struct{})
+	initOnce         sync.Once
+	kbdCallbackPtr   uintptr
 	mouseCallbackPtr uintptr
 )
 
@@ -179,17 +179,17 @@ func QueryModifiers() Modifiers {
 
 // windowsHook implements the Hook interface for Windows using pure Win32 API calls.
 type windowsHook struct {
-	mu          sync.Mutex
-	running     bool
-	stoppedCh   chan struct{}
-	stopOnce    sync.Once
-	hasStarted  bool
-	events      chan InputEvent
-	bufferSize  int
+	mu         sync.Mutex
+	running    bool
+	stoppedCh  chan struct{}
+	stopOnce   sync.Once
+	hasStarted bool
+	events     chan InputEvent
+	bufferSize int
 
-	threadID    uintptr
-	hhkKbd      uintptr
-	hhkMouse    uintptr
+	threadID uintptr
+	hhkKbd   uintptr
+	hhkMouse uintptr
 
 	pressedKeys       map[uint32]bool
 	activeMods        Modifiers

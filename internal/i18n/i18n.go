@@ -1,23 +1,31 @@
 package i18n
 
 import (
+	"embed"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
 	"syscall"
 	"unsafe"
+
+	goi18n "github.com/nicksnyder/go-i18n/v2/i18n"
+	"golang.org/x/text/language"
 )
 
 // Language represents a supported localization language.
 type Language string
 
 const (
-	LangEnUS  Language = "en-US"
-	LangZhCN  Language = "zh-CN"
-	LangZhTW  Language = "zh-TW"
-	LangJaJP  Language = "ja-JP"
+	LangEnUS Language = "en-US"
+	LangZhCN Language = "zh-CN"
+	LangZhTW Language = "zh-TW"
+	LangJaJP Language = "ja-JP"
 )
 
+// SupportedLanguages lists the locales in the order they appear in the language
+// pickers. The Name is deliberately written in its own script: language menus
+// are conventionally presented in the target language, not the current one.
 var SupportedLanguages = []struct {
 	Code Language
 	Name string
@@ -28,840 +36,71 @@ var SupportedLanguages = []struct {
 	{LangJaJP, "日本語 (Japanese)"},
 }
 
-// LocaleDict holds string mappings for a given language.
+// LocaleDict is the flat message table for one locale. It mirrors the on-disk
+// message file one-to-one and is kept in memory for diagnostics and tests.
 type LocaleDict map[string]string
 
-var dictionaries = map[Language]LocaleDict{
-	LangZhCN: {
-		"app_name":             "Cue",
-		"app_subtitle":         "按键提示与舞台信号",
-		"tab_general":          "通用设置",
-		"tab_appearance":       "外观与位置",
-		"tab_keycap":           "键帽风格",
-		"tab_mouse":            "鼠标动作",
-		"tab_about":            "关于 Cue",
-		"general_title":        "通用设置",
-		"lang_section_title":   "界面语言",
-		"lang_title":           "语言",
-		"lang_desc":            "选择界面的显示语言",
-		"filter_title":         "按键过滤",
-		"filter_desc":          "控制在屏幕上显示的按键捕获范围",
-		"filter_none":          "全部按键",
-		"filter_modifiers":     "仅快捷键",
-		"filter_custom":        "自定义过滤",
-		"history_title":        "历史按键",
-		"history_desc":         "保留屏幕上敲击的按键流",
-		"history_enabled":      "历史按键：已开启",
-		"history_disabled":     "历史按键：已关闭",
-		"max_history":          "最大留存数: %d 组",
-		"toggle_shortcut":      "全局显示/隐藏热键",
-		"toggle_shortcut_desc": "随时唤出或隐藏按键悬浮窗",
-		"appearance_title":     "外观与位置",
-		"alignment_title":      "屏幕位置",
-		"alignment_desc":       "选择悬浮窗在屏幕上的具体方位",
-		"linger_title":         "停留时长与边距",
-		"stay_duration":        "屏幕留存时长: %.1f 秒",
-		"margin_x":             "水平边距: %d px",
-		"margin_y":             "垂直边距: %d px",
-		"anim_title":           "动画效果",
-		"keycap_title":         "键帽风格",
-		"keycap_model":         "键帽物理模型",
-		"model_lowprofile":     "矮轴 (Low Profile)",
-		"model_minimal":        "极简 (Minimal)",
-		"model_laptop":         "笔记本 (Laptop)",
-		"model_pbt":            "PBT 轴 (PBT)",
-		"preset_title":         "预设主题",
-		"display_elements":     "显示元素",
-		"press_count_on":       "连击次数 (×N)：开启",
-		"press_count_off":      "连击次数 (×N)：关闭",
-		"intent_sub_on":        "快捷键动作提示：开启",
-		"intent_sub_off":       "快捷键动作提示：关闭",
-		"tactile_audio_on":     "按键音效：开启",
-		"tactile_audio_off":    "按键音效：关闭",
-		"sound_profile":        "按键音效类型",
-		"sound_profile_desc":   "设置按键敲击时的反馈音效",
-		"profile_auto":         "跟随主题",
-		"profile_thock":        "机械轴 (Thock)",
-		"profile_click":        "段落轴 (Click)",
-		"profile_scissor":      "剪刀脚 (Scissor)",
-		"profile_glass":        "玻璃微音 (Glass)",
-		"profile_typewriter":   "打字机 (Typewriter)",
-		"mouse_title":          "鼠标动作",
-		"mouse_click_ripple":   "光标高亮",
-		"mouse_indicator":      "按键指示器",
-		"mouse_ripple_on":      "点击动画与光环：开启",
-		"mouse_ripple_off":     "点击动画与光环：关闭",
-		"mouse_size":           "光圈尺寸: %d px",
-		"drag_threshold":       "拖拽阈值: %d px",
-		"reset_defaults":       "恢复出厂设置",
-		"tray_settings":        "设置…",
-		"tray_quick_flyout":    "控制面板…",
-		"tray_smart":           "仅快捷键",
-		"tray_all":             "全部按键",
-		"tray_silent":          "暂停捕获",
-		"tray_clear":           "清空屏幕",
-		"tray_quit":            "退出 Cue",
-		"language":             "语言",
-		"about_desc":           "Cue — 极简高质感按键与手势舞台提示工具，专为教学、演示、录屏打造。基于 Go 原生 GPU 硬件加速直绘。",
-		"about_philosophy":     "设计理念：简洁、克制、高效、优雅。让每一次按键，都成为观众眼中的舞台提示。",
-		"default_shortcut":      "Shift + F10",
-		"flyout_design_themes":  "设计主题",
-		"flyout_capture_mode":   "捕获模式",
-		"flyout_mode_smart":     "仅快捷键",
-		"flyout_mode_all":       "全部按键",
-		"flyout_mode_silent":    "暂停捕获",
-		"flyout_alt_drag":       "按住 Alt 键可拖拽调整悬浮窗位置",
-		"btn_quit":              "退出程序",
-		"engine_architecture":   "核心架构: 纯 Go 语言 (Zero CGO) + github.com/egoist/mygo",
-		"renderer_architecture": "渲染后端: Direct3D 11 GPU 硬件加速",
-		"original_credits":      "开源灵感: mulaRahul/cue",
-		"align_top-left":        "↖ 左上角",
-		"align_top-center":      "↑ 顶部居中",
-		"align_top-right":       "↗ 右上角",
-		"align_center-left":     "← 左侧居中",
-		"align_center":          "· 屏幕正中",
-		"align_center-right":    "→ 右侧居中",
-		"align_bottom-left":     "↙ 左下角",
-		"align_bottom-center":   "↓ 底部居中",
-		"align_bottom-right":    "↘ 右下角",
-		"direction_title":       "排列流向",
-		"direction_row":         "水平横排 (Row)",
-		"direction_column":      "垂直竖排 (Column)",
-		"margin_link_on":        "锁定等距边距",
-		"margin_link_off":       "独立边距设置",
-		"text_formatting":       "文字排版与大小写",
-		"text_size":             "字体字号: %d px",
-		"text_variant":          "字符形态",
-		"variant_text":          "完整文本",
-		"variant_short":         "简写文字",
-		"variant_icon":          "仅图标",
-		"text_caps":             "大小写风格",
-		"caps_upper":            "全大写 (AA)",
-		"caps_cap":              "首字母大写 (Aa)",
-		"caps_lower":            "全小写 (aa)",
-		"color_schemes_title":   "原版 14 色工业色盘",
-		"border_title":          "键帽边框与圆角",
-		"border_on":             "边框描边：开启",
-		"border_off":            "边框描边：关闭",
-		"border_width":          "边框粗细: %d px",
-		"border_radius":         "倒角圆角: %.1f px",
-		"mod_highlight":         "修饰键高亮",
-		"mod_highlight_on":      "修饰键专属色彩：开启",
-		"mod_highlight_off":     "修饰键专属色彩：关闭",
-		"mouse_always_highlight": "鼠标常驻光圈",
-		"mouse_always_on":       "常驻光圈：开启",
-		"mouse_always_off":      "常驻光圈：关闭",
-		"mouse_indicator_on":    "按键卫星指示器：开启",
-		"mouse_indicator_off":   "按键卫星指示器：关闭",
-		"indicator_size":        "指示器大小: %d px",
-		"indicator_offset":      "指示器间距: %d px",
-		"show_icon_on":          "键帽图标：开启",
-		"show_icon_off":         "键帽图标：关闭",
-		"show_symbol_on":        "快捷符号：开启",
-		"show_symbol_off":       "快捷符号：关闭",
+// localeFS holds the message files. They are the single source of truth for
+// every user-visible string: the settings studio, the tray, the flyout, and the
+// action subtitles all resolve through the bundle built from these files.
+//
+//go:embed locales/*.json
+var localeFS embed.FS
 
-		// 意图字幕与按键语义 (Simplified Chinese Intent Subtitles)
-		"Select All":            "全选",
-		"Cut":                   "剪切",
-		"Copy":                  "复制",
-		"Paste":                 "粘贴",
-		"Undo":                  "撤销",
-		"Redo":                  "重做",
-		"Save":                  "保存",
-		"Save As":               "另存为",
-		"Find":                  "查找",
-		"Replace":               "替换",
-		"Quick Open":            "快速打开",
-		"Command Palette":       "命令面板",
-		"Switch App":            "切换应用",
-		"Show Desktop":          "显示桌面",
-		"File Explorer":         "文件资源管理器",
-		"Lock PC":               "锁定电脑",
-		"Clipboard History":     "剪贴板历史",
-		"Snipping Tool":         "截图工具",
-		"Close Window":          "关闭窗口",
-		"Close Tab":             "关闭标签页",
-		"New Tab":               "新建标签页",
-		"Reopen Closed Tab":     "重新打开关闭的标签页",
-		"Refresh":               "刷新",
-		"Zoom In":               "放大",
-		"Zoom Out":              "缩小",
-		"Reset Zoom":            "重置缩放",
-		"New Window":            "新建窗口",
-		"Open File":             "打开文件",
-		"Run Dialog":            "运行窗口",
-		"Settings":              "系统设置",
-		"Action Center":         "操作中心",
-		"Next Tab":              "下一标签页",
-		"Previous Tab":          "上一标签页",
-		"Toggle Sidebar":        "切换侧边栏",
-		"Toggle Terminal":       "切换终端",
-		"Toggle Comment":        "切换注释",
-		"Move Line Up":          "向上移动行",
-		"Move Line Down":        "向下移动行",
-		"Duplicate Line Down":   "向下复制行",
-		"Duplicate Line Up":     "向上复制行",
-		"Add Selection to Next Find Match": "添加下一个匹配项",
-		"Go to Definition":      "跳转到定义",
-		"Find References":       "查找所有引用",
-		"Rename Symbol":         "重命名符号",
-		"Go to Symbol":          "跳转到符号",
-		"Go to Line":            "跳转到行",
-		"Find in Files":         "全局查找",
-		"Replace in Files":      "全局替换",
-		"Delete Line":           "删除当前行",
-		"Delete":                "删除",
-		"Toggle Panel":          "切换面板",
-		"Trigger Suggestion":    "触发代码补全",
-		"Bookmark Tab":          "添加书签",
-		"Toggle Bookmarks Bar":  "显示/隐藏书签栏",
-		"Downloads":             "下载内容",
-		"History":               "历史记录",
-		"Developer Tools":       "开发者工具",
-		"Interrupt Process":     "中断进程",
-		"Exit / EOF":            "退出终端会话",
-		"Clear Terminal":        "清空终端",
-		"Open in New Tab":       "新建标签页打开",
-		"Open in New Tab (Focus)": "在前台新建标签页打开",
-		"Open in New Window":    "在新窗口打开",
+const localeDir = "locales"
 
-		// 鼠标按键与动作
-		"Left Click":            "鼠标左键",
-		"Right Click":           "鼠标右键",
-		"Middle Click":          "鼠标中键",
-		"Scroll Up":             "滚轮向上",
-		"Scroll Down":           "滚轮向下",
-		"Drag":                  "拖拽",
-		"Mouse Left":            "鼠标左键",
-		"Mouse Right":           "鼠标右键",
-		"Mouse Middle":          "鼠标中键",
-		"Mouse 4":               "鼠标侧键 4",
-		"Mouse 5":               "鼠标侧键 5",
-	},
-	LangEnUS: {
-		"app_name":             "Cue",
-		"app_subtitle":         "Keystroke & Presentation Stage Cue",
-		"tab_general":          "General",
-		"tab_appearance":       "Appearance",
-		"tab_keycap":           "Keycaps & Style",
-		"tab_mouse":            "Mouse Actions",
-		"tab_about":            "About Cue",
-		"general_title":        "General Settings",
-		"lang_section_title":   "System & Language",
-		"lang_title":           "Display Language",
-		"lang_desc":            "Choose language for Cue studio and tray interface",
-		"filter_title":         "Hotkey Filter Policy",
-		"filter_desc":          "Controls which keystrokes appear on screen",
-		"filter_none":          "Off (All Keys)",
-		"filter_modifiers":     "Hotkeys Only",
-		"filter_custom":        "Custom Filter",
-		"history_title":        "History Trail",
-		"history_desc":         "Keep previously pressed keystrokes visible",
-		"history_enabled":      "History Trail: Enabled",
-		"history_disabled":     "History Trail: Disabled",
-		"max_history":          "Max History Count: %d",
-		"toggle_shortcut":      "Global Toggle Shortcut",
-		"toggle_shortcut_desc": "Global hotkey to show or hide the visualizer anytime",
-		"appearance_title":     "Appearance & Positioning",
-		"alignment_title":      "Screen Alignment (9-Grid)",
-		"alignment_desc":       "Choose where keycaps anchor on your display",
-		"linger_title":         "Linger Duration & Margins",
-		"stay_duration":        "Stay on screen: %.1f seconds",
-		"margin_x":             "Margin X: %d px",
-		"margin_y":             "Margin Y: %d px",
-		"anim_title":           "Transition Animation",
-		"keycap_title":         "Keycap Aesthetics & Styles",
-		"keycap_model":         "Keycap Model",
-		"model_lowprofile":     "Low Profile (Default)",
-		"model_minimal":        "Minimal Flat",
-		"model_laptop":         "Laptop Scissor",
-		"model_pbt":            "PBT Mechanical",
-		"preset_title":         "Master Color Presets",
-		"display_elements":     "Display Enhancements",
-		"press_count_on":       "Streak Multiplier (×N): ON",
-		"press_count_off":      "Streak Multiplier (×N): OFF",
-		"intent_sub_on":        "Intent Subtitles: ON",
-		"intent_sub_off":       "Intent Subtitles: OFF",
-		"tactile_audio_on":     "Keystroke Audio: ON",
-		"tactile_audio_off":    "Keystroke Audio: OFF",
-		"sound_profile":        "Sound Profile",
-		"sound_profile_desc":   "Select keystroke feedback sound",
-		"profile_auto":         "Match Theme",
-		"profile_thock":        "Mechanical (Thock)",
-		"profile_click":        "Tactile (Click)",
-		"profile_scissor":      "Scissor Switch",
-		"profile_glass":        "Glass Chime",
-		"profile_typewriter":   "Typewriter",
-		"mouse_title":          "Mouse Visualization",
-		"mouse_click_ripple":   "Click Ripple & Forcefield",
-		"mouse_ripple_on":      "Mouse Click Animation: Enabled",
-		"mouse_ripple_off":     "Mouse Click Animation: Disabled",
-		"mouse_size":           "Ripple Halo Size: %d px",
-		"drag_threshold":       "Drag Threshold: %d px",
-		"reset_defaults":       "Reset Defaults",
-		"tray_settings":        "Settings Studio (Full Client)...",
-		"tray_quick_flyout":    "Quick Flyout...",
-		"tray_smart":           "Smart Mode (Hotkeys Only)",
-		"tray_all":             "All Keys Mode (No Filter)",
-		"tray_silent":          "Silent Mode (Paused)",
-		"tray_clear":           "Clear Active Keys",
-		"tray_quit":            "Quit Cue",
-		"language":             "Language",
-		"about_desc":           "Cue is an ultra-fast, minimalist keystroke & gesture stage cue tool for presentations, tutorials, and screencasts. Built with Pure Go and Direct3D 11 GPU rendering.",
-		"about_philosophy":     "Design Philosophy: Simplicity, Elegance, Performance. Let every keystroke become a clear stage cue.",
-		"default_shortcut":      "Shift + F10 (Default)",
-		"flyout_design_themes":  "Design Themes",
-		"flyout_capture_mode":   "Capture Mode",
-		"flyout_mode_smart":     "Smart",
-		"flyout_mode_all":       "All Keys",
-		"flyout_mode_silent":    "Silent",
-		"flyout_alt_drag":       "Hold Alt to Drag HUD",
-		"btn_quit":              "Quit",
-		"engine_architecture":   "Engine: Pure Go (Zero CGO) + github.com/egoist/mygo",
-		"renderer_architecture": "Renderer: Direct3D 11 (Windows) & Metal (macOS) GPU Direct",
-		"original_credits":      "Design Inspiration: mulaRahul/cue",
-		"align_top-left":        "↖ Top Left",
-		"align_top-center":      "↑ Top Center",
-		"align_top-right":       "↗ Top Right",
-		"align_center-left":     "← Center Left",
-		"align_center":          "· Center",
-		"align_center-right":    "→ Center Right",
-		"align_bottom-left":     "↙ Bottom Left",
-		"align_bottom-center":   "↓ Bottom Center",
-		"align_bottom-right":    "↘ Bottom Right",
-		"direction_title":       "Flow Direction",
-		"direction_row":         "Horizontal (Row)",
-		"direction_column":      "Vertical (Column)",
-		"margin_link_on":        "Linked Margins: ON",
-		"margin_link_off":       "Linked Margins: OFF",
-		"text_formatting":       "Typography & Capitalization",
-		"text_size":             "Font Size: %d px",
-		"text_variant":          "Variant",
-		"variant_text":          "Full Text",
-		"variant_short":         "Short Text",
-		"variant_icon":          "Icon Only",
-		"text_caps":             "Capitalization",
-		"caps_upper":            "Uppercase (AA)",
-		"caps_cap":              "Capitalize (Aa)",
-		"caps_lower":            "Lowercase (aa)",
-		"color_schemes_title":   "Original 14 Color Palettes",
-		"border_title":          "Border & Corner Radius",
-		"border_on":             "Border: ON",
-		"border_off":            "Border: OFF",
-		"border_width":          "Border Width: %d px",
-		"border_radius":         "Corner Radius: %.1f px",
-		"mod_highlight":         "Modifier Highlight",
-		"mod_highlight_on":      "Modifier Highlight: ON",
-		"mod_highlight_off":     "Modifier Highlight: OFF",
-		"mouse_always_highlight": "Always Highlight Cursor",
-		"mouse_always_on":       "Always Highlight: ON",
-		"mouse_always_off":      "Always Highlight: OFF",
-		"mouse_indicator":       "Button Satellite Indicator",
-		"mouse_indicator_on":    "Button Indicator: ON",
-		"mouse_indicator_off":   "Button Indicator: OFF",
-		"indicator_size":        "Indicator Size: %d px",
-		"indicator_offset":      "Indicator Offset: %d px",
-		"show_icon_on":          "Keycap Icon: ON",
-		"show_icon_off":         "Keycap Icon: OFF",
-		"show_symbol_on":        "Shortcut Symbol: ON",
-		"show_symbol_off":       "Shortcut Symbol: OFF",
+var (
+	// bundle is the go-i18n message store. English is the default language, so
+	// a key missing from the active locale falls back to English and only then
+	// to the raw key.
+	bundle = goi18n.NewBundle(language.English)
+	// catalogue exposes the parsed tables per locale for tests and diagnostics.
+	catalogue = make(map[Language]LocaleDict, len(SupportedLanguages))
+	// loadErr records the first message-file problem. A broken translation file
+	// must not take the whole application down, so the manager degrades to
+	// returning raw keys and the error is surfaced by the test suite.
+	loadErr error
+)
 
-		// Intent Subtitles & Action Localization (English)
-		"Select All":            "Select All",
-		"Cut":                   "Cut",
-		"Copy":                  "Copy",
-		"Paste":                 "Paste",
-		"Undo":                  "Undo",
-		"Redo":                  "Redo",
-		"Save":                  "Save",
-		"Save As":               "Save As",
-		"Find":                  "Find",
-		"Replace":               "Replace",
-		"Quick Open":            "Quick Open",
-		"Command Palette":       "Command Palette",
-		"Switch App":            "Switch App",
-		"Show Desktop":          "Show Desktop",
-		"File Explorer":         "File Explorer",
-		"Lock PC":               "Lock PC",
-		"Clipboard History":     "Clipboard History",
-		"Snipping Tool":         "Snipping Tool",
-		"Close Window":          "Close Window",
-		"Close Tab":             "Close Tab",
-		"New Tab":               "New Tab",
-		"Reopen Closed Tab":     "Reopen Closed Tab",
-		"Refresh":               "Refresh",
-		"Zoom In":               "Zoom In",
-		"Zoom Out":              "Zoom Out",
-		"Reset Zoom":            "Reset Zoom",
-		"New Window":            "New Window",
-		"Open File":             "Open File",
-		"Run Dialog":            "Run Dialog",
-		"Settings":              "Settings",
-		"Action Center":         "Action Center",
-		"Next Tab":              "Next Tab",
-		"Previous Tab":          "Previous Tab",
-		"Toggle Sidebar":        "Toggle Sidebar",
-		"Toggle Terminal":       "Toggle Terminal",
-		"Toggle Comment":        "Toggle Comment",
-		"Move Line Up":          "Move Line Up",
-		"Move Line Down":        "Move Line Down",
-		"Duplicate Line Down":   "Duplicate Line Down",
-		"Duplicate Line Up":     "Duplicate Line Up",
-		"Add Selection to Next Find Match": "Add Next Match",
-		"Go to Definition":      "Go to Definition",
-		"Find References":       "Find References",
-		"Rename Symbol":         "Rename Symbol",
-		"Go to Symbol":          "Go to Symbol",
-		"Go to Line":            "Go to Line",
-		"Find in Files":         "Find in Files",
-		"Replace in Files":      "Replace in Files",
-		"Delete Line":           "Delete Line",
-		"Delete":                "Delete",
-		"Toggle Panel":          "Toggle Panel",
-		"Trigger Suggestion":    "Trigger Suggestion",
-		"Bookmark Tab":          "Bookmark Tab",
-		"Toggle Bookmarks Bar":  "Toggle Bookmarks Bar",
-		"Downloads":             "Downloads",
-		"History":               "History",
-		"Developer Tools":       "Developer Tools",
-		"Interrupt Process":     "Interrupt Process",
-		"Exit / EOF":            "Exit / EOF",
-		"Clear Terminal":        "Clear Terminal",
-		"Open in New Tab":       "Open in New Tab",
-		"Open in New Tab (Focus)": "Open in Foreground Tab",
-		"Open in New Window":    "Open in New Window",
-
-		// Mouse Actions
-		"Left Click":            "Left Click",
-		"Right Click":           "Right Click",
-		"Middle Click":          "Middle Click",
-		"Scroll Up":             "Scroll Up",
-		"Scroll Down":           "Scroll Down",
-		"Drag":                  "Drag",
-		"Mouse Left":            "Mouse Left",
-		"Mouse Right":           "Mouse Right",
-		"Mouse Middle":          "Mouse Middle",
-		"Mouse 4":               "Mouse 4",
-		"Mouse 5":               "Mouse 5",
-	},
-	LangZhTW: {
-		"app_name":             "Cue",
-		"app_subtitle":         "按鍵提示與舞台信號",
-		"tab_general":          "一般設定",
-		"tab_appearance":       "外觀與位置",
-		"tab_keycap":           "鍵帽與風格",
-		"tab_mouse":            "滑鼠動作",
-		"tab_about":            "關於 Cue",
-		"general_title":        "一般系統設定",
-		"lang_section_title":   "系統與語言",
-		"lang_title":           "介面語言",
-		"lang_desc":            "選擇 Cue 用戶端與系統匣介面的顯示語言",
-		"filter_title":         "熱鍵過濾策略",
-		"filter_desc":          "控制在螢幕上顯示的按鍵擷取範圍",
-		"filter_none":          "全部按鍵 (Off)",
-		"filter_modifiers":     "僅快捷鍵 (Hotkeys)",
-		"filter_custom":        "自訂過濾 (Custom)",
-		"history_title":        "歷史按鍵軌跡",
-		"history_desc":         "保留螢幕上歷史敲擊的按鍵流",
-		"history_enabled":      "歷史按鍵軌跡：已啟用",
-		"history_disabled":     "歷史按鍵軌跡：已停用",
-		"max_history":          "歷史留存按鍵數: %d 組",
-		"toggle_shortcut":      "全域顯示/隱藏熱鍵",
-		"toggle_shortcut_desc": "全域熱鍵，隨時喚出或隱藏按鍵懸浮窗",
-		"appearance_title":     "外觀與螢幕定位",
-		"alignment_title":      "螢幕定位九宮格",
-		"alignment_desc":       "選擇鍵帽懸浮窗吸附在螢幕的具體方位",
-		"linger_title":         "呼吸停留與螢幕邊距",
-		"stay_duration":        "螢幕留存時長: %.1f 秒",
-		"margin_x":             "水平邊距 X: %d px",
-		"margin_y":             "垂直邊距 Y: %d px",
-		"anim_title":           "過場動效風格",
-		"keycap_title":         "鍵帽物理形態與美學",
-		"keycap_model":         "鍵帽物理模型",
-		"model_lowprofile":     "矮軸物理 (Low Profile - 預設)",
-		"model_minimal":        "極簡扁平 (Minimal)",
-		"model_laptop":         "輕薄剪刀腳 (Laptop)",
-		"model_pbt":            "PBT 機械軸 (PBT Tactile)",
-		"preset_title":         "大師級工業設計預設",
-		"display_elements":     "顯示增強元素",
-		"press_count_on":       "連擊倍率徽章 (×N)：開啟",
-		"press_count_off":      "連擊倍率徽章 (×N)：關閉",
-		"intent_sub_on":        "上下文意圖微字幕：開啟",
-		"intent_sub_off":       "上下文意圖微字幕：關閉",
-		"tactile_audio_on":     "按鍵音效：開啟",
-		"tactile_audio_off":    "按鍵音效：關閉",
-		"sound_profile":        "按鍵音效類型",
-		"sound_profile_desc":   "設定按鍵敲擊時的回饋音效",
-		"profile_auto":         "跟隨主題",
-		"profile_thock":        "機械軸 (Thock)",
-		"profile_click":        "段落軸 (Click)",
-		"profile_scissor":      "剪刀腳 (Scissor)",
-		"profile_glass":        "玻璃微音 (Glass)",
-		"profile_typewriter":   "打字機 (Typewriter)",
-		"mouse_title":          "滑鼠力場可視化",
-		"mouse_click_ripple":   "滑鼠點擊水波紋力場",
-		"mouse_ripple_on":      "點擊動畫與衛星光環：開啟",
-		"mouse_ripple_off":     "點擊動畫與衛星光環：關閉",
-		"mouse_size":           "點擊光環擴散尺寸: %d px",
-		"drag_threshold":       "拖曳觸發判定閾值: %d px",
-		"reset_defaults":       "恢復出廠預設",
-		"tray_settings":        "設定工作室 (完整客戶端)...",
-		"tray_quick_flyout":    "靈動懸浮控制面板...",
-		"tray_smart":           "智能模式 (僅快捷鍵)",
-		"tray_all":             "全鍵盤模式 (無過濾)",
-		"tray_silent":          "靜默模式 (暫停擷取)",
-		"tray_clear":           "立即清屏",
-		"tray_quit":            "結束 Cue",
-		"language":             "語言 (Language)",
-		"about_desc":           "Cue 是極簡高質感按鍵與手勢舞台提示工具，專為教學、演講、錄影打造。基於 Go 原生 GPU 直繪架構。",
-		"about_philosophy":     "設計哲學：簡約、克制、高效、和諧。讓每次按鍵都成為清晰的舞台信號。",
-		"default_shortcut":      "Shift + F10 (預設)",
-		"flyout_design_themes":  "設計主題",
-		"flyout_capture_mode":   "擷取模式",
-		"flyout_mode_smart":     "智慧模式",
-		"flyout_mode_all":       "全鍵模式",
-		"flyout_mode_silent":    "靜默暫停",
-		"flyout_alt_drag":       "按住 Alt 鍵可拖曳懸浮窗",
-		"btn_quit":              "退出程式",
-		"engine_architecture":   "核心架構: 純 Go 語言 (Zero CGO) + github.com/egoist/mygo",
-		"renderer_architecture": "渲染管線: 硬體 Direct3D 11 (Windows) & Metal (macOS) GPU 直繪",
-		"original_credits":      "經典開源致敬: mulaRahul/cue",
-		"align_top-left":        "↖ 左上角",
-		"align_top-center":      "↑ 頂部居中",
-		"align_top-right":       "↗ 右上角",
-		"align_center-left":     "← 左側居中",
-		"align_center":          "· 螢幕正中",
-		"align_center-right":    "→ 右側居中",
-		"align_bottom-left":     "↙ 左下角",
-		"align_bottom-center":   "↓ 底部居中",
-		"align_bottom-right":    "↘ 右下角",
-		"direction_title":       "排列流向",
-		"direction_row":         "水平横排 (Row)",
-		"direction_column":      "垂直竖排 (Column)",
-		"margin_link_on":        "锁定等距边距",
-		"margin_link_off":       "独立边距设置",
-		"text_formatting":       "文字排版与大小写",
-		"text_size":             "字体字号: %d px",
-		"text_variant":          "字符形态",
-		"variant_text":          "完整文本",
-		"variant_short":         "简写文字",
-		"variant_icon":          "仅图标",
-		"text_caps":             "大小写风格",
-		"caps_upper":            "全大写 (AA)",
-		"caps_cap":              "首字母大写 (Aa)",
-		"caps_lower":            "全小写 (aa)",
-		"color_schemes_title":   "原版 14 色工業色盤",
-		"border_title":          "鍵帽邊框與圓角",
-		"border_on":             "邊框描邊：開啟",
-		"border_off":            "邊框描邊：關閉",
-		"border_width":          "邊框粗細: %d px",
-		"border_radius":         "倒角圓角: %.1f px",
-		"mod_highlight":         "修飾鍵高亮",
-		"mod_highlight_on":      "修飾鍵專屬色彩：開啟",
-		"mod_highlight_off":     "修飾鍵專屬色彩：關閉",
-		"mouse_always_highlight": "滑鼠常駐光圈",
-		"mouse_always_on":       "常駐光圈：開啟",
-		"mouse_always_off":      "常駐光圈：關閉",
-		"mouse_indicator":       "按鍵動作衛星指示器",
-		"mouse_indicator_on":    "按鍵衛星指示器：開啟",
-		"mouse_indicator_off":   "按鍵衛星指示器：關閉",
-		"indicator_size":        "指示器大小: %d px",
-		"indicator_offset":      "指示器間距: %d px",
-		"show_icon_on":          "鍵帽圖示：開啟",
-		"show_icon_off":         "鍵帽圖示：關閉",
-		"show_symbol_on":        "快捷符號：開啟",
-		"show_symbol_off":       "快捷符號：關閉",
-
-		// 意圖字幕與按鍵語意 (Traditional Chinese Intent Subtitles)
-		"Select All":            "全選",
-		"Cut":                   "剪下",
-		"Copy":                  "複製",
-		"Paste":                 "貼上",
-		"Undo":                  "復原",
-		"Redo":                  "重做",
-		"Save":                  "儲存",
-		"Save As":               "另存新檔",
-		"Find":                  "尋找",
-		"Replace":               "取代",
-		"Quick Open":            "快速開啟",
-		"Command Palette":       "命令選擇區",
-		"Switch App":            "切換應用程式",
-		"Show Desktop":          "顯示桌面",
-		"File Explorer":         "檔案總管",
-		"Lock PC":               "鎖定電腦",
-		"Clipboard History":     "剪貼簿歷程",
-		"Snipping Tool":         "剪取工具",
-		"Close Window":          "關閉視窗",
-		"Close Tab":             "關閉分頁",
-		"New Tab":               "新增分頁",
-		"Reopen Closed Tab":     "重新開啟關閉的分頁",
-		"Refresh":               "重新整理",
-		"Zoom In":               "放大",
-		"Zoom Out":              "縮小",
-		"Reset Zoom":            "重設縮放",
-		"New Window":            "開新視窗",
-		"Open File":             "開啟檔案",
-		"Run Dialog":            "執行視窗",
-		"Settings":              "系統設定",
-		"Action Center":         "控制中心",
-		"Next Tab":              "下一分頁",
-		"Previous Tab":          "上一分頁",
-		"Toggle Sidebar":        "切換側邊欄",
-		"Toggle Terminal":       "切換終端機",
-		"Toggle Comment":        "切換註解",
-		"Move Line Up":          "向上移動行",
-		"Move Line Down":        "向下移動行",
-		"Duplicate Line Down":   "向下複製行",
-		"Duplicate Line Up":     "向上複製行",
-		"Add Selection to Next Find Match": "選取下一個相符項目",
-		"Go to Definition":      "前往定義",
-		"Find References":       "尋找參照",
-		"Rename Symbol":         "重新命名符號",
-		"Go to Symbol":          "前往符號",
-		"Go to Line":            "前往行",
-		"Find in Files":         "在檔案中尋找",
-		"Replace in Files":      "在檔案中取代",
-		"Delete Line":           "刪除當前行",
-		"Delete":                "刪除",
-		"Toggle Panel":          "切換面板",
-		"Trigger Suggestion":    "觸發程式碼建議",
-		"Bookmark Tab":          "加入書籤",
-		"Toggle Bookmarks Bar":  "顯示/隱藏書籤列",
-		"Downloads":             "下載項目",
-		"History":               "瀏覽紀錄",
-		"Developer Tools":       "開發人員工具",
-		"Interrupt Process":     "中斷處理程序",
-		"Exit / EOF":            "結束工作階段",
-		"Clear Terminal":        "清除終端機",
-		"Open in New Tab":       "在新增分頁中開啟",
-		"Open in New Tab (Focus)": "在前台新增分頁開啟",
-		"Open in New Window":    "在新視窗中開啟",
-
-		// 滑鼠按鍵與動作
-		"Left Click":            "滑鼠左鍵",
-		"Right Click":           "滑鼠右鍵",
-		"Middle Click":          "滑鼠中鍵",
-		"Scroll Up":             "滾輪向上",
-		"Scroll Down":           "滾輪向下",
-		"Drag":                  "拖曳",
-		"Mouse Left":            "滑鼠左鍵",
-		"Mouse Right":           "滑鼠右鍵",
-		"Mouse Middle":          "滑鼠中鍵",
-		"Mouse 4":               "滑鼠側鍵 4",
-		"Mouse 5":               "滑鼠側鍵 5",
-	},
-	LangJaJP: {
-		"app_name":             "Cue",
-		"app_subtitle":         "キーストローク＆プレゼンテーション・キュー",
-		"tab_general":          "全般設定",
-		"tab_appearance":       "外観と配置",
-		"tab_keycap":           "キーキャップ",
-		"tab_mouse":            "マウス動作",
-		"tab_about":            "Cueについて",
-		"general_title":        "一般システム設定",
-		"lang_section_title":   "システムと言語",
-		"lang_title":           "表示言語",
-		"lang_desc":            "Cue クライアントとトレイの表示言語を選択します",
-		"filter_title":         "ホットキーフィルター",
-		"filter_desc":          "画面に表示するキー入力の範囲を設定します",
-		"filter_none":          "すべてのキー (Off)",
-		"filter_modifiers":     "ショートカットのみ (Hotkeys)",
-		"filter_custom":        "カスタム (Custom)",
-		"history_title":        "入力履歴表示",
-		"history_desc":         "直前の入力キーを画面上に維持します",
-		"history_enabled":      "入力履歴：有効",
-		"history_disabled":     "入力履歴：無効",
-		"max_history":          "最大履歴数: %d 件",
-		"toggle_shortcut":      "グローバル表示切替ショートカット",
-		"toggle_shortcut_desc": "いつでもウィンドウを表示/非表示にするショートカット",
-		"appearance_title":     "外観と画面配置",
-		"alignment_title":      "画面アンカー (9グリッド)",
-		"alignment_desc":       "キーキャップを表示する画面位置を選択します",
-		"linger_title":         "表示持続時間と余白",
-		"stay_duration":        "表示時間: %.1f 秒",
-		"margin_x":             "水平マージン X: %d px",
-		"margin_y":             "垂直マージン Y: %d px",
-		"anim_title":           "トランジションアニメーション",
-		"keycap_title":         "キーキャップの質感とスタイル",
-		"keycap_model":         "キーキャップモデル",
-		"model_lowprofile":     "ロープロファイル (標準)",
-		"model_minimal":        "ミニマルフラット",
-		"model_laptop":         "ラップトップ",
-		"model_pbt":            "PBTメカニカル",
-		"preset_title":         "デザインプリセット",
-		"display_elements":     "表示強化",
-		"press_count_on":       "連続打鍵カウント (×N)：ON",
-		"press_count_off":      "連続打鍵カウント (×N)：OFF",
-		"intent_sub_on":        "アクション字幕：ON",
-		"intent_sub_off":       "アクション字幕：OFF",
-		"tactile_audio_on":     "打鍵サウンド：ON",
-		"tactile_audio_off":    "打鍵サウンド：OFF",
-		"sound_profile":        "打鍵サウンドスタイル",
-		"sound_profile_desc":   "打鍵フィードバックのサウンドを設定",
-		"profile_auto":         "テーマ連動",
-		"profile_thock":        "メカニカル (Thock)",
-		"profile_click":        "クリッキー (Click)",
-		"profile_scissor":      "パンタグラフ (Scissor)",
-		"profile_glass":        "グラス (Glass)",
-		"profile_typewriter":   "タイプライター (Typewriter)",
-		"mouse_title":          "マウスの可視化",
-		"mouse_click_ripple":   "クリックリップルと軌跡",
-		"mouse_ripple_on":      "クリックアニメーション：有効",
-		"mouse_ripple_off":     "クリックアニメーション：無効",
-		"mouse_size":           "サークルサイズ: %d px",
-		"drag_threshold":       "ドラッグ認識距離: %d px",
-		"reset_defaults":       "デフォルトに戻す",
-		"tray_settings":        "設定スタジオ (フルクライアント)...",
-		"tray_quick_flyout":    "クイックパネル...",
-		"tray_smart":           "スマート (ショートカットのみ)",
-		"tray_all":             "全キー表示",
-		"tray_silent":          "サイレント (一時停止)",
-		"tray_clear":           "画面をクリア",
-		"tray_quit":            "Cueを終了",
-		"language":             "言語 (Language)",
-		"about_desc":           "Cue は Go 言語ネイティブ GPU 描画による、プレゼンテーションと画面録画のためのキーストローク・ステージキューツールです。",
-		"about_philosophy":     "設計哲学：シンプル、洗練、ハイパフォーマンス。",
-		"default_shortcut":      "Shift + F10 (デフォルト)",
-		"flyout_design_themes":  "デザインテーマ",
-		"flyout_capture_mode":   "キャプチャモード",
-		"flyout_mode_smart":     "スマート",
-		"flyout_mode_all":       "すべてのキー",
-		"flyout_mode_silent":    "サイレント",
-		"flyout_alt_drag":       "Altキー長押しでHUDをドラッグ移動",
-		"btn_quit":              "終了",
-		"engine_architecture":   "コア構成: Pure Go (Zero CGO) + github.com/egoist/mygo",
-		"renderer_architecture": "レンダラー: Direct3D 11 / Metal ハードウェアGPU直描",
-		"original_credits":      "リスペクト元: mulaRahul/cue",
-		"align_top-left":        "↖ 左上",
-		"align_top-center":      "↑ 上中央",
-		"align_top-right":       "↗ 右上",
-		"align_center-left":     "← 左中央",
-		"align_center":          "· 画面中央",
-		"align_center-right":    "→ 右中央",
-		"align_bottom-left":     "↙ 左下",
-		"align_bottom-center":   "↓ 下中央",
-		"align_bottom-right":    "↘ 右下",
-		"direction_title":       "配置方向",
-		"direction_row":         "水平 (Row)",
-		"direction_column":      "垂直 (Column)",
-		"margin_link_on":        "等間隔マージン固定",
-		"margin_link_off":       "マージン個別設定",
-		"text_formatting":       "文字と大文字/小文字設定",
-		"text_size":             "フォントサイズ: %d px",
-		"text_variant":          "表示形態",
-		"variant_text":          "フルテキスト",
-		"variant_short":         "省略文字",
-		"variant_icon":          "アイコンのみ",
-		"text_caps":             "大文字・小文字",
-		"caps_upper":            "大文字 (AA)",
-		"caps_cap":              "先頭大文字 (Aa)",
-		"caps_lower":            "小文字 (aa)",
-		"color_schemes_title":   "公式 14 カラーパレット",
-		"border_title":          "キーキャップ枠線・角丸",
-		"border_on":             "枠線描画：ON",
-		"border_off":            "枠線描画：OFF",
-		"border_width":          "枠線の太さ: %d px",
-		"border_radius":         "角丸半径: %.1f px",
-		"mod_highlight":         "修飾キー強調",
-		"mod_highlight_on":      "修飾キー専用カラー：ON",
-		"mod_highlight_off":     "修饰キー専用カラー：OFF",
-		"mouse_always_highlight": "カーソル常時ハイライト",
-		"mouse_always_on":       "常時サークル：ON",
-		"mouse_always_off":      "常時サークル：OFF",
-		"mouse_indicator":       "マウスボタンサテライト表示",
-		"mouse_indicator_on":    "ボタンインジケーター：ON",
-		"mouse_indicator_off":   "ボタンインジケーター：OFF",
-		"indicator_size":        "インジケーターサイズ: %d px",
-		"indicator_offset":      "インジケーターオフセット: %d px",
-		"show_icon_on":          "キーキャップアイコン：ON",
-		"show_icon_off":         "キーキャップアイコン：OFF",
-		"show_symbol_on":        "ショートカット記号：ON",
-		"show_symbol_off":       "ショートカット記号：OFF",
-
-		// 意図字幕とアクションローカライズ (Japanese Intent Subtitles)
-		"Select All":            "すべて選択",
-		"Cut":                   "切り取り",
-		"Copy":                  "コピー",
-		"Paste":                 "貼り付け",
-		"Undo":                  "元に戻す",
-		"Redo":                  "やり直し",
-		"Save":                  "保存",
-		"Save As":               "名前を付けて保存",
-		"Find":                  "検索",
-		"Replace":               "置換",
-		"Quick Open":            "クイックオープン",
-		"Command Palette":       "コマンドパレット",
-		"Switch App":            "アプリ切り替え",
-		"Show Desktop":          "デスクトップを表示",
-		"File Explorer":         "エクスプローラー",
-		"Lock PC":               "PCをロック",
-		"Clipboard History":     "クリップボードの履歴",
-		"Snipping Tool":         "切り取り＆スケッチ",
-		"Close Window":          "ウィンドウを閉じる",
-		"Close Tab":             "タブを閉じる",
-		"New Tab":               "新しいタブ",
-		"Reopen Closed Tab":     "閉じたタブを開く",
-		"Refresh":               "更新",
-		"Zoom In":               "拡大",
-		"Zoom Out":              "縮小",
-		"Reset Zoom":            "拡大縮小のリセット",
-		"New Window":            "新しいウィンドウ",
-		"Open File":             "ファイルを開く",
-		"Run Dialog":            "ファイル名を指定して実行",
-		"Settings":              "設定",
-		"Action Center":         "アクションセンター",
-		"Next Tab":              "次のタブ",
-		"Previous Tab":          "前のタブ",
-		"Toggle Sidebar":        "サイドバーの切り替え",
-		"Toggle Terminal":       "ターミナルの切り替え",
-		"Toggle Comment":        "コメントの切り替え",
-		"Move Line Up":          "行を上に移動",
-		"Move Line Down":        "行を下に移動",
-		"Duplicate Line Down":   "行を下にコピー",
-		"Duplicate Line Up":     "行を上にコピー",
-		"Add Selection to Next Find Match": "次の一致項目を選択",
-		"Go to Definition":      "定義へ移動",
-		"Find References":       "すべての参照を検索",
-		"Rename Symbol":         "シンボルの名前変更",
-		"Go to Symbol":          "シンボルへ移動",
-		"Go to Line":            "行へ移動",
-		"Find in Files":         "フォルダー内を検索",
-		"Replace in Files":      "フォルダー内を置換",
-		"Delete Line":           "行を削除",
-		"Delete":                "削除",
-		"Toggle Panel":          "パネルの切り替え",
-		"Trigger Suggestion":    "候補のトリガー",
-		"Bookmark Tab":          "ブックマークに追加",
-		"Toggle Bookmarks Bar":  "ブックマークバーの切り替え",
-		"Downloads":             "ダウンロード",
-		"History":               "履歴",
-		"Developer Tools":       "開発者ツール",
-		"Interrupt Process":     "プロセスの中断",
-		"Exit / EOF":            "セッション終了",
-		"Clear Terminal":        "ターミナルをクリア",
-		"Open in New Tab":       "新しいタブで開く",
-		"Open in New Tab (Focus)": "前面の新しいタブで開く",
-		"Open in New Window":    "新しいウィンドウで開く",
-
-		// マウス操作とボタン (Mouse Actions)
-		"Left Click":            "左クリック",
-		"Right Click":           "右クリック",
-		"Middle Click":          "中央クリック",
-		"Scroll Up":             "上スクロール",
-		"Scroll Down":           "下スクロール",
-		"Drag":                  "ドラッグ",
-		"Mouse Left":            "左クリック",
-		"Mouse Right":           "右クリック",
-		"Mouse Middle":          "中央クリック",
-		"Mouse 4":               "マウスボタン 4",
-		"Mouse 5":               "マウスボタン 5",
-	},
+func init() {
+	bundle.RegisterUnmarshalFunc("json", json.Unmarshal)
+	for _, entry := range SupportedLanguages {
+		path := localeDir + "/active." + string(entry.Code) + ".json"
+		raw, err := localeFS.ReadFile(path)
+		if err != nil {
+			recordLoadError(fmt.Errorf("reading %s: %w", path, err))
+			continue
+		}
+		dict := make(LocaleDict)
+		if err := json.Unmarshal(raw, &dict); err != nil {
+			recordLoadError(fmt.Errorf("decoding %s: %w", path, err))
+			continue
+		}
+		if _, err := bundle.ParseMessageFileBytes(raw, path); err != nil {
+			recordLoadError(fmt.Errorf("loading %s into bundle: %w", path, err))
+			continue
+		}
+		catalogue[entry.Code] = dict
+	}
 }
 
-// I18nManager coordinates current language selection and lookups.
+func recordLoadError(err error) {
+	if loadErr == nil {
+		loadErr = err
+	}
+}
+
+// LoadError reports the first problem encountered while loading the message
+// files, or nil when every locale loaded cleanly.
+func LoadError() error { return loadErr }
+
+// I18nManager coordinates the active locale and resolves messages through
+// go-i18n. The localizer is rebuilt whenever the language changes, which is
+// cheap (it only holds a tag list) and keeps reads lock-free.
 type I18nManager struct {
-	mu      sync.RWMutex
-	current Language
+	mu        sync.RWMutex
+	current   Language
+	localizer *goi18n.Localizer
 }
 
 var (
@@ -872,72 +111,86 @@ var (
 // Instance returns the singleton I18nManager.
 func Instance() *I18nManager {
 	once.Do(func() {
+		current := detectDefaultLanguage()
 		globalManager = &I18nManager{
-			current: detectDefaultLanguage(),
+			current:   current,
+			localizer: goi18n.NewLocalizer(bundle, string(current)),
 		}
 	})
 	return globalManager
 }
 
-// detectDefaultLanguage queries Windows system locale or falls back to zh-CN / en-US.
+// detectDefaultLanguage queries the Windows system locale and maps it onto a
+// supported language, falling back to Simplified Chinese.
 func detectDefaultLanguage() Language {
-	// Try Windows GetUserDefaultLocaleName
 	kernel32 := syscall.NewLazyDLL("kernel32.dll")
 	proc := kernel32.NewProc("GetUserDefaultLocaleName")
 	if proc != nil {
 		buf := make([]uint16, 85)
 		r, _, _ := proc.Call(uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)))
 		if r > 0 {
-			loc := syscall.UTF16ToString(buf)
-			locLower := strings.ToLower(loc)
-			if strings.HasPrefix(locLower, "zh-tw") || strings.HasPrefix(locLower, "zh-hk") {
+			loc := strings.ToLower(syscall.UTF16ToString(buf))
+			switch {
+			case strings.HasPrefix(loc, "zh-tw"), strings.HasPrefix(loc, "zh-hk"), strings.HasPrefix(loc, "zh-mo"):
 				return LangZhTW
-			}
-			if strings.HasPrefix(locLower, "zh") {
+			case strings.HasPrefix(loc, "zh"):
 				return LangZhCN
-			}
-			if strings.HasPrefix(locLower, "ja") {
+			case strings.HasPrefix(loc, "ja"):
 				return LangJaJP
 			}
 		}
 	}
-	return LangZhCN // Default to Chinese in this environment
+	return LangZhCN
 }
 
-// SetLanguage updates active locale.
+// SetLanguage updates the active locale and rebuilds the localizer.
 func (m *I18nManager) SetLanguage(lang Language) {
+	if _, ok := catalogue[lang]; !ok {
+		return
+	}
+	loc := goi18n.NewLocalizer(bundle, string(lang))
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if _, ok := dictionaries[lang]; ok {
-		m.current = lang
-	}
+	m.current = lang
+	m.localizer = loc
 }
 
-// GetLanguage returns active locale.
+// GetLanguage returns the active locale.
 func (m *I18nManager) GetLanguage() Language {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.current
 }
 
-// T translates a key into the active locale text with fallback.
+// T translates a key into the active locale.
+//
+// Resolution order is handled by go-i18n: active locale, then the bundle's
+// default language (English), then the default message, which is the key
+// itself. A missing translation therefore degrades to the raw identifier rather
+// than an empty label.
 func (m *I18nManager) T(key string) string {
 	m.mu.RLock()
-	cur := m.current
+	loc := m.localizer
 	m.mu.RUnlock()
+	if loc == nil {
+		return key
+	}
+	// go-i18n reports MessageNotFoundErr together with a usable fallback string
+	// whenever it had to leave the requested locale, so the returned text is
+	// authoritative and only an empty result means "nothing to show".
+	text, _ := loc.Localize(&goi18n.LocalizeConfig{
+		DefaultMessage: &goi18n.Message{ID: key, Other: key},
+	})
+	if text == "" {
+		return key
+	}
+	return text
+}
 
-	if dict, ok := dictionaries[cur]; ok {
-		if text, exists := dict[key]; exists {
-			return text
-		}
-	}
-	// Fallback to English
-	if dict, ok := dictionaries[LangEnUS]; ok {
-		if text, exists := dict[key]; exists {
-			return text
-		}
-	}
-	return key
+// Has reports whether key exists in the given locale.
+func (m *I18nManager) Has(lang Language, key string) bool {
+	_, ok := catalogue[lang][key]
+	return ok
 }
 
 // T is the global package helper.
@@ -945,7 +198,8 @@ func T(key string) string {
 	return Instance().T(key)
 }
 
-// TF is the global package helper with formatting.
+// TF is the global package helper with printf-style formatting applied to the
+// resolved message.
 func TF(key string, args ...any) string {
 	raw := Instance().T(key)
 	if len(args) == 0 {
@@ -953,4 +207,3 @@ func TF(key string, args ...any) string {
 	}
 	return fmt.Sprintf(raw, args...)
 }
-

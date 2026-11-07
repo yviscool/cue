@@ -55,6 +55,14 @@ type DisplayChord struct {
 	IsPrivate  bool                // True if masked by privacy shield
 	Velocity   int                 // Cadence velocity: 0: Adagio (<35 WPM), 1: Andante (35-75 WPM), 2: Allegro (>75 WPM)
 	IsFinisher bool                // True if this chord is a sequence terminator (Enter, Tab, etc.)
+
+	// Contextual interpretation metadata. Confidence lets the HUD distinguish
+	// an app-exact meaning from a generic fallback, while AppName powers the
+	// optional application badge. IsSequence marks combined two-chord cues
+	// such as Ctrl+K Ctrl+S.
+	Confidence semantic.Confidence
+	AppName    string
+	IsSequence bool
 }
 
 // MouseVisualState represents a mouse action visualization.

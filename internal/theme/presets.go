@@ -779,11 +779,11 @@ type MouseThemeConfig struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
 	DisplayName string `json:"displayName"`
-	LeftColor   string `json:"leftColor"`   // Left click button color
-	RightColor  string `json:"rightColor"`  // Right click button color
-	WheelColor  string `json:"wheelColor"`  // Middle click & scroll wheel color
-	RingColor   string `json:"ringColor"`   // Contact puck & cursor ripple color
-	BadgeColor  string `json:"badgeColor"`  // Multi-click pill badge color
+	LeftColor   string `json:"leftColor"`  // Left click button color
+	RightColor  string `json:"rightColor"` // Right click button color
+	WheelColor  string `json:"wheelColor"` // Middle click & scroll wheel color
+	RingColor   string `json:"ringColor"`  // Contact puck & cursor ripple color
+	BadgeColor  string `json:"badgeColor"` // Multi-click pill badge color
 }
 
 // AllMouseThemes provides vibrant preset mouse themes.

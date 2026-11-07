@@ -8,10 +8,16 @@ Cue stores user settings in a human-readable JSON/YAML configuration file locate
 
 ```json
 {
-  "version": 2,
+  "version": 3,
   "language": "en",
   "themePreset": "Liquid Glass",
   "tactileAudio": true,
+  "semanticSub": true,
+  "semanticContext": true,
+  "showAppBadge": true,
+  "customShortcuts": [
+    { "app": "devcpp.exe", "chord": "Ctrl+Alt+B", "label": "Build My Project" }
+  ],
   "general": {
     "filter": "smart",
     "allowedKeys": [],
@@ -59,6 +65,10 @@ Cue stores user settings in a human-readable JSON/YAML configuration file locate
 | `language` | `string` | `"zh-CN"` / `"en"` | Interface locale (`en`, `zh-CN`, `zh-TW`, `ja`). |
 | `themePreset` | `string` | `"Liquid Glass"` | Active keyboard theme preset. |
 | `tactileAudio` | `bool` | `true` | Toggle spatial binaural mechanical sound synthesis. |
+| `semanticSub` | `bool` | `true` | Show human-readable action subtitles under keycaps. |
+| `semanticContext` | `bool` | `true` | Interpret shortcuts using the foreground application. When disabled, universal decoding still works but app profiles are skipped. Privacy shielding remains active. |
+| `showAppBadge` | `bool` | `true` | Include the recognized application name in action subtitles. |
+| `customShortcuts` | `array` | `[]` | User-defined shortcut interpretations. See below. |
 | `general.filter` | `string` | `"smart"` | Keystroke capture policy: `smart` (shortcuts & special keys), `all` (all typing), `custom`, `silent`. |
 | `general.lingerDurationMs`| `int` | `2000` | Lifetime (in ms) keycap chords linger on screen. |
 | `general.showEventHistory`| `bool` | `true` | When enabled, keeps a vertical stack of recent chords. |
@@ -66,6 +76,24 @@ Cue stores user settings in a human-readable JSON/YAML configuration file locate
 | `general.wordGrouping` | `bool` | `true` | Groups consecutive alphanumeric typing into words. |
 | `general.dragThreshold` | `int` | `50` | Minimum cursor travel (in px) before recognizing a drag. |
 | `general.toggleShortcut` | `[]string` | `["Shift", "F10"]` | Global hotkey to toggle overlay visibility. |
+
+#### Custom shortcut entries
+
+Each `customShortcuts` item has the following shape:
+
+| Field | Type | Required | Description |
+| :--- | :--- | :--- | :--- |
+| `app` | `string` | no | Executable (`devcpp.exe`), profile id (`vscode`), category (`editor`), or `*` / omitted for a global rule. |
+| `chord` | `string` | yes | One chord, e.g. `Ctrl+Shift+F9`. Modifiers: `Ctrl`, `Shift`, `Alt`, `Win`/`Super`/`Cmd`. |
+| `label` | `string` | yes | Subtitle text. Also acts as the translation key; unknown labels display verbatim. |
+| `description` | `string` | no | Optional longer explanation for future UI surfaces. |
+
+User overrides take priority over every built-in interpretation. Invalid
+entries are logged and skipped; they never disable the rest of the dictionary.
+
+> **Migration:** configuration files written before version 3 are upgraded
+> automatically. `semanticContext` and `showAppBadge` default to `true` for
+> existing installations, and the file is rewritten in place.
 
 ---
 

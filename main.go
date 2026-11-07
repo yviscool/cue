@@ -15,6 +15,7 @@ import (
 	"github.com/yviscool/cue/internal/acoustic"
 	"github.com/yviscool/cue/internal/assets"
 	"github.com/yviscool/cue/internal/config"
+	"github.com/yviscool/cue/internal/context"
 	"github.com/yviscool/cue/internal/engine"
 	"github.com/yviscool/cue/internal/hook"
 	"github.com/yviscool/cue/internal/hud"
@@ -30,6 +31,7 @@ type app struct {
 	hk         hook.Hook
 	player     *acoustic.Player
 	matcher    *semantic.DefaultMatcher
+	appCtx     context.Provider
 	vState     *hud.ViewState
 	settings   *hud.SettingsController
 	hudWindow  *mygo.Window
@@ -120,10 +122,10 @@ func (a *app) reportConfigError(err error) {
 	if a.tray == nil {
 		return
 	}
-	a.tray.SetToolTip("Cue · 配置有误，已保留上次设置")
+	a.tray.SetToolTip(i18n.T("tray_tooltip_config_error"))
 	time.AfterFunc(6*time.Second, func() {
 		if a.tray != nil {
-			a.tray.SetToolTip("Cue · 演示与舞台信号")
+			a.tray.SetToolTip(i18n.T("tray_tooltip"))
 		}
 	})
 }
@@ -232,6 +234,23 @@ func (a *app) ready() {
 	a.player = acoustic.NewPlayer()
 	a.matcher = semantic.NewDefaultMatcher()
 
+	// Duplicate chords are a data bug, not a crash: the last registration wins.
+	// Log them so a bad profile is visible in the field instead of silently
+	// teaching the wrong label. TestRegistryHasNoDuplicates keeps this empty.
+	if dupes := a.matcher.Registry().Audit(); len(dupes) > 0 {
+		for _, d := range dupes {
+			log.Printf("shortcut registry: %s", d)
+		}
+	}
+
+	// Foreground application provider: polls cheaply (250ms) and publishes only
+	// when the window/process changes. All Win32 process queries stay on this
+	// goroutine so the low-level keyboard hook is never blocked.
+	a.appCtx = context.NewProvider(250 * time.Millisecond)
+	if err := a.appCtx.Start(); err != nil {
+		log.Printf("context provider warning: %v", err)
+	}
+
 	soundAdapter := engine.SpatialSoundPlayerFunc(func(s engine.SoundType, key string) {
 		st := acoustic.SoundThock
 		if s == engine.SoundClick {
@@ -246,6 +265,8 @@ func (a *app) ready() {
 		engine.WithSoundPlayer(soundAdapter),
 		engine.WithSoundActive(cfg.TactileAudio),
 		engine.WithMatcher(a.matcher),
+		engine.WithAppContext(a.appCtx.Current()),
+		engine.WithSemanticContext(cfg.SemanticContext),
 		engine.WithThemeName(cfg.ThemePreset),
 		engine.WithShowMouseClicks(cfg.Mouse.ShowClicks),
 		engine.WithMouseClickLinger(time.Duration(cfg.Mouse.ClickLingerMs)*time.Millisecond),
@@ -257,6 +278,17 @@ func (a *app) ready() {
 	a.applyConfig(cfg)
 
 	a.settings = hud.NewSettingsController(a.store, a.eng, a.vState)
+	a.settings.SetContextSource(a.appCtx.Current)
+
+	// Push context changes into the engine and keep the settings preview live.
+	a.appCtx.Subscribe(func(ctx context.AppContext) {
+		if a.eng != nil {
+			a.eng.SetAppContext(ctx)
+		}
+		if a.settings != nil {
+			a.settings.Invalidate()
+		}
+	})
 
 	a.hudVisible = true
 
@@ -323,7 +355,7 @@ func (a *app) ready() {
 		ID:             "cue-app",
 		Icon:           assets.TrayIconPNG,
 		IconIsTemplate: true,
-		ToolTip:        "Cue · 演示与舞台信号",
+		ToolTip:        i18n.T("tray_tooltip"),
 		Menu:           a.buildTrayMenu(),
 	})
 	if err != nil {
@@ -370,6 +402,9 @@ func (a *app) ready() {
 		}
 		if a.hk != nil {
 			a.hk.Stop()
+		}
+		if a.appCtx != nil {
+			a.appCtx.Stop()
 		}
 		if a.eng != nil {
 			a.eng.Stop()
@@ -442,9 +477,34 @@ func (a *app) applyConfig(cfg config.AppConfig) {
 	a.eng.SetDragThreshold(cfg.General.DragThreshold)
 	a.eng.SetSoundActive(cfg.TactileAudio)
 	a.eng.SetWordGrouping(cfg.General.WordGrouping)
+	a.eng.SetSemanticContext(cfg.SemanticContext)
 	a.eng.SetLingerDuration(cfg.General.LingerDurationMs)
 	a.eng.SetMaxChords(historyChordLimit(cfg))
 	a.eng.SetThemeName(cfg.ThemePreset)
+	a.applyCustomShortcuts(cfg)
+}
+
+// applyCustomShortcuts converts configuration entries into the matcher's
+// pre-indexed override set. Invalid entries are reported once per apply and
+// otherwise ignored, so a typo can never break global shortcut matching.
+func (a *app) applyCustomShortcuts(cfg config.AppConfig) {
+	if a.matcher == nil {
+		return
+	}
+	if len(cfg.CustomShortcuts) == 0 {
+		a.matcher.SetOverrides(nil)
+		return
+	}
+	overrides := make([]semantic.Override, 0, len(cfg.CustomShortcuts))
+	for _, custom := range cfg.CustomShortcuts {
+		o, err := semantic.ParseOverride(custom.App, custom.Chord, custom.Label, custom.Description)
+		if err != nil {
+			log.Printf("custom shortcut %q ignored: %v", custom.Chord, err)
+			continue
+		}
+		overrides = append(overrides, o)
+	}
+	a.matcher.SetOverrides(overrides)
 }
 
 func (a *app) repositionHUD(cfg config.AppConfig) {

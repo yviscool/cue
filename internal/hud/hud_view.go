@@ -493,7 +493,7 @@ func renderChord(c *ui.Context, chord engine.DisplayChord, t theme.ThemeConfig, 
 
 		// If matched with semantic action subtitle and SemanticSub enabled, render intent pill
 		if chord.Action.Title != "" && !chord.IsPrivate && cfg.SemanticSub {
-			renderActionSubtitle(c, chord.Action.Title, t, cfg)
+			renderActionSubtitle(c, chord, t, cfg)
 		}
 	})
 }
@@ -1002,8 +1002,8 @@ func renderStreakBadge(c *ui.Context, badgeId string, streak int, t theme.ThemeC
 
 // renderActionSubtitle renders the contextual action subtitle pill,
 // dynamically adapting to the active theme and custom color palette.
-func renderActionSubtitle(c *ui.Context, title string, t theme.ThemeConfig, cfg config.AppConfig) {
-	translated := i18n.T(title)
+func renderActionSubtitle(c *ui.Context, chord engine.DisplayChord, t theme.ThemeConfig, cfg config.AppConfig) {
+	translated := i18n.T(chord.Action.Title)
 
 	// The intent pill always takes the theme's dedicated subtitle pair. Reusing
 	// keycap colors made "Copy/Paste" disappear on light keycaps or light-on-light
@@ -1030,10 +1030,34 @@ func renderActionSubtitle(c *ui.Context, title string, t theme.ThemeConfig, cfg 
 		Border(1, textColor.Alpha(0.35)).
 		Shadow(0, 4, 12, 0, bg.Alpha(0.40)).
 		Children(func() {
-			ui.Text(c, translated).
-				FontSize(fontSize).
-				Bold().
-				TextColor(textColor)
+			ui.Row(c).AlignItems(ui.Center).Gap(7).Children(func() {
+				// Application badge: makes the interpretation auditable at a
+				// glance ("why does Ctrl+P say Quick Open?" because VS Code).
+				if cfg.ShowAppBadge && chord.AppName != "" {
+					ui.Box(c).
+						Padding(2, 7).
+						Radius(5).
+						Background(textColor.Alpha(0.12)).
+						Children(func() {
+							ui.Text(c, chord.AppName).
+								FontSize(fontSize - 1).
+								Bold().
+								SingleLine().
+								TextColor(textColor.Alpha(0.82))
+						})
+				}
+				if chord.IsSequence {
+					ui.Text(c, "⇢").
+						FontSize(fontSize + 1).
+						Bold().
+						TextColor(textColor.Alpha(0.55))
+				}
+				ui.Text(c, translated).
+					FontSize(fontSize).
+					Bold().
+					SingleLine().
+					TextColor(textColor)
+			})
 		})
 }
 

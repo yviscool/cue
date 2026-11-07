@@ -75,10 +75,11 @@ func mouseBodySvg(btn hook.MouseButton, wheel int, mth theme.MouseThemeConfig) *
 
 // RenderMouseOverlay renders the complete Cue-replicated mouse visualization at cursor (x, y):
 // 1. Click Ripple FX (tactile contact puck, expanding translucent water ripple, and outer ambient halo)
-//    - Left click: Primary color (default vibrant neon #00FF6A)
-//    - Right click: Secondary high-contrast Ice Blue (#38bdf8)
-//    - Middle click: Amber Gold (#facc15)
-//    - KeepHighlight: Steady cursor spotlight halo when idling
+//   - Left click: Primary color (default vibrant neon #00FF6A)
+//   - Right click: Secondary high-contrast Ice Blue (#38bdf8)
+//   - Middle click: Amber Gold (#facc15)
+//   - KeepHighlight: Steady cursor spotlight halo when idling
+//
 // 2. Button & Scroll Indicator (pill badge beside cursor showing mouse silhouette with color-coded active lobes)
 func RenderMouseOverlay(c *ui.Context, state engine.MouseVisualState, cfg config.AppConfig, t theme.ThemeConfig, scale float64, originX, originY int) {
 	if scale <= 0 {
@@ -142,10 +143,10 @@ func RenderMouseOverlay(c *ui.Context, state engine.MouseVisualState, cfg config
 			coreSize := baseSize * 0.44
 			ui.Box(c.Key(fmt.Sprintf("mouse-core-%d", clickKey))).
 				Absolute().
-				Left(cx - coreSize/2).
-				Top(cy - coreSize/2).
+				Left(cx-coreSize/2).
+				Top(cy-coreSize/2).
 				Size(coreSize, coreSize).
-				Radius(coreSize / 2).
+				Radius(coreSize/2).
 				Background(clickColor.Alpha(0.24)).
 				Border(2.0, clickColor).
 				Shadow(0, 0, 12, 0, clickColor.Alpha(0.65)).
@@ -159,10 +160,10 @@ func RenderMouseOverlay(c *ui.Context, state engine.MouseVisualState, cfg config
 			rippleSize := baseSize * 1.55
 			ui.Box(c.Key(fmt.Sprintf("mouse-ripple-%d", clickKey))).
 				Absolute().
-				Left(cx - rippleSize/2).
-				Top(cy - rippleSize/2).
+				Left(cx-rippleSize/2).
+				Top(cy-rippleSize/2).
 				Size(rippleSize, rippleSize).
-				Radius(rippleSize / 2).
+				Radius(rippleSize/2).
 				Border(2.2, clickColor.Alpha(0.85)).
 				Shadow(0, 0, 16, 0, clickColor.Alpha(0.40)).
 				Transition(ui.ElementTransition{
@@ -176,10 +177,10 @@ func RenderMouseOverlay(c *ui.Context, state engine.MouseVisualState, cfg config
 			haloSize := baseSize * 2.15
 			ui.Box(c.Key(fmt.Sprintf("mouse-halo-%d", clickKey))).
 				Absolute().
-				Left(cx - haloSize/2).
-				Top(cy - haloSize/2).
+				Left(cx-haloSize/2).
+				Top(cy-haloSize/2).
 				Size(haloSize, haloSize).
-				Radius(haloSize / 2).
+				Radius(haloSize/2).
 				Border(1.4, clickColor.Alpha(0.45)).
 				Shadow(0, 0, 22, 0, clickColor.Alpha(0.25)).
 				Transition(ui.ElementTransition{
@@ -194,10 +195,10 @@ func RenderMouseOverlay(c *ui.Context, state engine.MouseVisualState, cfg config
 				echoSize := baseSize * 1.85
 				ui.Box(c.Key(fmt.Sprintf("mouse-echo-%d-%d", clickKey, state.ClickCount))).
 					Absolute().
-					Left(cx - echoSize/2).
-					Top(cy - echoSize/2).
+					Left(cx-echoSize/2).
+					Top(cy-echoSize/2).
 					Size(echoSize, echoSize).
-					Radius(echoSize / 2).
+					Radius(echoSize/2).
 					Border(2.5, clickColor).
 					Shadow(0, 0, 18, 0, clickColor.Alpha(0.60)).
 					Transition(ui.ElementTransition{
@@ -216,10 +217,10 @@ func RenderMouseOverlay(c *ui.Context, state engine.MouseVisualState, cfg config
 			}
 			ui.Box(c.Key("mouse-cursor-steady-ring")).
 				Absolute().
-				Left(cx - steadySize/2).
-				Top(cy - steadySize/2).
+				Left(cx-steadySize/2).
+				Top(cy-steadySize/2).
 				Size(steadySize, steadySize).
-				Radius(steadySize / 2).
+				Radius(steadySize/2).
 				Border(borderWidth, ringColor.Alpha(0.70)).
 				Shadow(0, 0, 12, 0, ringColor.Alpha(0.35)).
 				Transition(ui.ElementTransition{
@@ -269,10 +270,10 @@ func RenderMouseOverlay(c *ui.Context, state engine.MouseVisualState, cfg config
 
 		indicatorBox := ui.Box(c.Key("mouse-btn-indicator")).
 			Absolute().
-			Left(cx + ox).
-			Top(cy + oy).
-			Width(w + 14).
-			Height(h + 14).
+			Left(cx+ox).
+			Top(cy+oy).
+			Width(w+14).
+			Height(h+14).
 			Background(ui.RGBA(12, 12, 16, 0.78)).
 			Radius(boxRadius).
 			Border(1, ui.RGBA(255, 255, 255, 0.16)).
@@ -338,8 +339,8 @@ func RenderMouseOverlay(c *ui.Context, state engine.MouseVisualState, cfg config
 					Radius(badgeRadius).
 					PaddingX(badgePadX).
 					PaddingY(badgePadY).
-					MinWidth(badgeFont * 1.6).
-					MinHeight(badgeFont * 1.4).
+					MinWidth(badgeFont*1.6).
+					MinHeight(badgeFont*1.4).
 					AlignItems(ui.Center).
 					Justify(ui.Center).
 					Border(1, ui.RGBA(255, 255, 255, 0.40)).

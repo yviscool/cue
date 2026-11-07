@@ -28,11 +28,11 @@ const (
 
 // AppearanceSettings controls HUD window placement, animations, and monitor targets.
 type AppearanceSettings struct {
-	Monitor           string    `json:"monitor"`           // "" / "primary" = primary display, otherwise display ID or label
-	FlexDirection     string    `json:"flexDirection"`     // "row" | "column"
-	Alignment         Alignment `json:"alignment"`         // default "bottom-center"
-	MarginX           int       `json:"marginX"`           // default 100
-	MarginY           int       `json:"marginY"`           // default 100
+	Monitor               string    `json:"monitor"`               // "" / "primary" = primary display, otherwise display ID or label
+	FlexDirection         string    `json:"flexDirection"`         // "row" | "column"
+	Alignment             Alignment `json:"alignment"`             // default "bottom-center"
+	MarginX               int       `json:"marginX"`               // default 100
+	MarginY               int       `json:"marginY"`               // default 100
 	Animation             string    `json:"animation"`             // "none" | "fade" | "zoom" | "float" | "slide"
 	AnimationDuration     float64   `json:"animationDuration"`     // default 0.25 (seconds)
 	DisablePressAnimation bool      `json:"disablePressAnimation"` // disables keycap sinking & press highlight FX
@@ -101,6 +101,16 @@ type MouseSettings struct {
 	ClickLingerMs    int    `json:"clickLingerMs"`    // default 180 (ms)
 }
 
+// CustomShortcut is a user-defined interpretation for a shortcut chord. App may
+// be an executable name ("devcpp.exe"), a profile id ("vscode"), a category
+// ("editor"), or empty / "*" for a global mapping.
+type CustomShortcut struct {
+	App         string `json:"app,omitempty"`
+	Chord       string `json:"chord"`
+	Label       string `json:"label"`
+	Description string `json:"description,omitempty"`
+}
+
 // GeneralSettings mirrors Cue General tab settings.
 type GeneralSettings struct {
 	Filter           string   `json:"filter"`           // "none" | "modifiers" | "custom" | "silent"
@@ -129,16 +139,21 @@ type AppConfig struct {
 	Mouse      MouseSettings      `json:"mouse"`
 
 	// Jobsian Enhanced Extensions (Optional enhancements)
-	TactileAudio bool   `json:"tactileAudio"` // Micro-acoustics ON/OFF
-	AudioProfile string `json:"audioProfile"` // "auto", "thock", "click", "scissor", "glass", "typewriter"
-	SemanticSub  bool   `json:"semanticSub"`  // Semantic Action subtitles ON/OFF
-	ThemePreset  string `json:"themePreset"`  // e.g. "Liquid Glass", "MacBook Scissor", "Dieter Rams 1960"
-	Language     string `json:"language"`     // "zh-CN", "en-US", "zh-TW", "ja-JP", or "" (system default)
+	TactileAudio    bool             `json:"tactileAudio"`    // Micro-acoustics ON/OFF
+	AudioProfile    string           `json:"audioProfile"`    // "auto", "thock", "click", "scissor", "glass", "typewriter"
+	SemanticSub     bool             `json:"semanticSub"`     // Semantic Action subtitles ON/OFF
+	SemanticContext bool             `json:"semanticContext"` // Context-aware shortcut interpretation
+	ShowAppBadge    bool             `json:"showAppBadge"`    // Show the recognized application badge in subtitles
+	CustomShortcuts []CustomShortcut `json:"customShortcuts,omitempty"`
+	ThemePreset     string           `json:"themePreset"` // e.g. "Liquid Glass", "MacBook Scissor", "Dieter Rams 1960"
+	Language        string           `json:"language"`    // "zh-CN", "en-US", "zh-TW", "ja-JP", or "" (system default)
 }
 
-// configVersion 2 made theme-derived values inherit from the selected preset
-// instead of hard-coding the old Keyviz palette into every new installation.
-const configVersion = 2
+// configVersion history:
+//
+//	2 - theme-derived values inherit from the selected preset
+//	3 - context intelligence (semanticContext / showAppBadge / custom shortcuts)
+const configVersion = 3
 
 // DefaultConfig returns the official Cue defaults. Theme-derived values are left
 // empty/zero on purpose: the selected theme is the single source of truth for
@@ -215,11 +230,13 @@ func DefaultConfig() AppConfig {
 			IndicatorOffsetY: 50,
 			ClickLingerMs:    180,
 		},
-		TactileAudio: true,
-		AudioProfile: "auto",
-		SemanticSub:  true,
-		ThemePreset:  "Liquid Glass",
-		Language:     "",
+		TactileAudio:    true,
+		AudioProfile:    "auto",
+		SemanticSub:     true,
+		SemanticContext: true,
+		ShowAppBadge:    true,
+		ThemePreset:     "Liquid Glass",
+		Language:        "",
 	}
 }
 
@@ -470,41 +487,55 @@ func migrateLegacyConfig(c *AppConfig) bool {
 		return false
 	}
 
-	if c.Appearance.Style == "lowprofile" {
-		c.Appearance.Style = ""
-	}
-	if c.Text.Size == 32 {
-		c.Text.Size = 0
-	}
-	if strings.EqualFold(c.Text.Color, "#000000") {
-		c.Text.Color = ""
-	}
-	if strings.EqualFold(c.Color.Color, "#ffffff") {
-		c.Color.Color = ""
-	}
-	if strings.EqualFold(c.Color.SecondaryColor, "#1a1a1a") {
-		c.Color.SecondaryColor = ""
-	}
-	if c.Border.Radius == 0.5 {
-		c.Border.Radius = 0
-	}
-	if strings.EqualFold(c.Border.Color, "#1a1a1a") {
-		c.Border.Color = ""
+	migrated := false
+	if c.Version < 2 {
+		// Version 2: theme-derived values inherit from the selected preset.
+		if c.Appearance.Style == "lowprofile" {
+			c.Appearance.Style = ""
+		}
+		if c.Text.Size == 32 {
+			c.Text.Size = 0
+		}
+		if strings.EqualFold(c.Text.Color, "#000000") {
+			c.Text.Color = ""
+		}
+		if strings.EqualFold(c.Color.Color, "#ffffff") {
+			c.Color.Color = ""
+		}
+		if strings.EqualFold(c.Color.SecondaryColor, "#1a1a1a") {
+			c.Color.SecondaryColor = ""
+		}
+		if c.Border.Radius == 0.5 {
+			c.Border.Radius = 0
+		}
+		if strings.EqualFold(c.Border.Color, "#1a1a1a") {
+			c.Border.Color = ""
+		}
+
+		// Canonicalize the legacy slug names so the settings picker can show a
+		// checkmark on the active preset.
+		switch strings.ToLower(strings.TrimSpace(c.ThemePreset)) {
+		case "", "liquid-glass":
+			c.ThemePreset = "Liquid Glass"
+		case "cupertino-pro":
+			c.ThemePreset = "MacBook Scissor"
+		case "braun-tactile":
+			c.ThemePreset = "Dieter Rams 1960"
+		}
+		c.Version = 2
+		migrated = true
 	}
 
-	// Canonicalize the legacy slug names so the settings picker can show a
-	// checkmark on the active preset.
-	switch strings.ToLower(strings.TrimSpace(c.ThemePreset)) {
-	case "", "liquid-glass":
-		c.ThemePreset = "Liquid Glass"
-	case "cupertino-pro":
-		c.ThemePreset = "MacBook Scissor"
-	case "braun-tactile":
-		c.ThemePreset = "Dieter Rams 1960"
+	if c.Version < 3 {
+		// Version 3: context intelligence defaults on for existing installs.
+		c.SemanticContext = true
+		c.ShowAppBadge = true
+		c.Version = 3
+		migrated = true
 	}
 
 	c.Version = configVersion
-	return true
+	return migrated
 }
 
 // Get returns an immutable copy of the active configuration.

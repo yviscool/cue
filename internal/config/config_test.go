@@ -54,6 +54,15 @@ func TestDefaultConfigCompleteness(t *testing.T) {
 	if cfg.Mouse.Size != 150 || cfg.Mouse.Color != "#00FF6A" {
 		t.Errorf("expected mouse size 150, color #00FF6A, got %d/%s", cfg.Mouse.Size, cfg.Mouse.Color)
 	}
+	if !cfg.SemanticContext || !cfg.ShowAppBadge {
+		t.Errorf("expected context intelligence defaults on, got context=%v badge=%v", cfg.SemanticContext, cfg.ShowAppBadge)
+	}
+	if !cfg.SemanticSub || !cfg.TactileAudio {
+		t.Errorf("expected semantic subtitles and audio on by default")
+	}
+	if len(cfg.CustomShortcuts) != 0 {
+		t.Errorf("expected no custom shortcuts by default, got %d", len(cfg.CustomShortcuts))
+	}
 }
 
 func TestLegacyConfigMigration(t *testing.T) {
@@ -92,6 +101,9 @@ func TestLegacyConfigMigration(t *testing.T) {
 	if got.Version != configVersion {
 		t.Errorf("expected migrated version %d, got %d", configVersion, got.Version)
 	}
+	if !got.SemanticContext || !got.ShowAppBadge {
+		t.Errorf("v3 migration must enable context intelligence by default, got %v/%v", got.SemanticContext, got.ShowAppBadge)
+	}
 	if got.Appearance.Style != "" || got.Color.Color != "" || got.Color.SecondaryColor != "" ||
 		got.Text.Size != 0 || got.Text.Color != "" || got.Border.Radius != 0 || got.Border.Color != "" {
 		t.Errorf("legacy default overrides were not cleared: %+v", got)
@@ -114,6 +126,35 @@ func TestLegacyConfigMigration(t *testing.T) {
 	}
 	if onDisk.Version != configVersion {
 		t.Errorf("expected migrated version persisted, got %d", onDisk.Version)
+	}
+}
+
+func TestV3ExplicitContextOptOutIsPreserved(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "cue_cfg_optout")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	filePath := filepath.Join(tmpDir, "v3.json")
+	cfg := DefaultConfig()
+	cfg.SemanticContext = false
+	cfg.ShowAppBadge = false
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filePath, data, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	store, err := NewStore(filePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := store.Get()
+	if got.SemanticContext || got.ShowAppBadge {
+		t.Fatalf("explicit v3 opt-out was overwritten: context=%v badge=%v", got.SemanticContext, got.ShowAppBadge)
 	}
 }
 

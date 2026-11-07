@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yviscool/cue/internal/context"
 	"github.com/yviscool/cue/internal/hook"
 	"github.com/yviscool/cue/internal/semantic"
 )
@@ -23,16 +24,42 @@ func newMockMatcher() *mockMatcher {
 	}
 }
 
-func (m *mockMatcher) MatchAction(appContext string, mods hook.Modifiers, keyName string) (semantic.ActionInfo, bool) {
+func (m *mockMatcher) actionKey(mods hook.Modifiers, keyName string) string {
 	key := mods.String() + "+" + keyName
 	if mods.IsEmpty() {
 		key = keyName
 	}
-	act, ok := m.actions[key]
-	return act, ok
+	return key
 }
 
-func (m *mockMatcher) IsSensitive(appContext string, keyName string) bool {
+func (m *mockMatcher) MatchAction(app context.AppContext, mods hook.Modifiers, keyName string) semantic.MatchResult {
+	act, ok := m.actions[m.actionKey(mods, keyName)]
+	if !ok {
+		return semantic.MatchResult{}
+	}
+	return semantic.MatchResult{
+		Action:     act,
+		Confidence: semantic.ConfidenceProfile,
+		AppName:    app.DisplayName(),
+	}
+}
+
+func (m *mockMatcher) MatchUniversal(mods hook.Modifiers, keyName string) semantic.MatchResult {
+	act, ok := m.actions[m.actionKey(mods, keyName)]
+	if !ok {
+		return semantic.MatchResult{}
+	}
+	return semantic.MatchResult{
+		Action:     act,
+		Confidence: semantic.ConfidenceUniversal,
+	}
+}
+
+func (m *mockMatcher) MatchSequence(app context.AppContext, firstMods hook.Modifiers, firstKey string, secondMods hook.Modifiers, secondKey string) (semantic.MatchResult, bool) {
+	return semantic.MatchResult{}, false
+}
+
+func (m *mockMatcher) IsSensitive(app context.AppContext, keyName string) bool {
 	return m.secrets[keyName]
 }
 
@@ -1255,5 +1282,148 @@ func TestCadenceVelocityAndFinisher(t *testing.T) {
 	finisher := chords[len(chords)-1]
 	if !finisher.IsFinisher {
 		t.Errorf("Enter chord should have IsFinisher=true")
+	}
+}
+
+func TestSequenceCollapsesIntoOneCue(t *testing.T) {
+	matcher := semantic.NewDefaultMatcher()
+	eng := NewEngine(
+		WithFilterMode(FilterSmart),
+		WithMatcher(matcher),
+		WithAppContext(context.AppContext{Exe: "code.exe", Title: "main.go - Visual Studio Code"}),
+	)
+	defer eng.Stop()
+
+	start := time.Now()
+	eng.HandleEvent(hook.InputEvent{
+		Type:      hook.EventKeyDown,
+		KeyName:   "K",
+		Modifiers: hook.ModCtrl,
+		Timestamp: start,
+	})
+	eng.HandleEvent(hook.InputEvent{
+		Type:      hook.EventKeyDown,
+		KeyName:   "S",
+		Modifiers: hook.ModCtrl,
+		Timestamp: start.Add(180 * time.Millisecond),
+	})
+
+	chords := eng.Chords()
+	if len(chords) != 1 {
+		t.Fatalf("expected the first chord to collapse, got %d chords", len(chords))
+	}
+	chord := chords[0]
+	if !chord.IsSequence {
+		t.Fatal("expected IsSequence=true")
+	}
+	if chord.Action.Title != "Keyboard Shortcuts" {
+		t.Fatalf("expected Keyboard Shortcuts, got %q", chord.Action.Title)
+	}
+	if chord.AppName != "VS Code" {
+		t.Fatalf("expected VS Code app name, got %q", chord.AppName)
+	}
+	foundArrow := false
+	for _, k := range chord.Keys {
+		if k.Label == "→" {
+			foundArrow = true
+		}
+	}
+	if !foundArrow {
+		t.Fatalf("expected combined keys with an arrow, got %+v", chord.Keys)
+	}
+}
+
+func TestSetAppContextChangesInterpretation(t *testing.T) {
+	matcher := semantic.NewDefaultMatcher()
+	eng := NewEngine(WithFilterMode(FilterSmart), WithMatcher(matcher))
+	defer eng.Stop()
+
+	eng.SetAppContext(context.AppContext{Exe: "devcpp.exe", Title: "main.cpp - Dev-C++"})
+	eng.HandleEvent(hook.InputEvent{Type: hook.EventKeyDown, KeyName: "F9"})
+	chords := eng.Chords()
+	if len(chords) != 1 || chords[0].Action.Title != "Compile" {
+		t.Fatalf("expected Dev-C++ Compile hint, got %+v", chords)
+	}
+
+	eng.Clear()
+	eng.SetAppContext(context.AppContext{Exe: "notepad.exe", Title: "Untitled - Notepad"})
+	eng.HandleEvent(hook.InputEvent{Type: hook.EventKeyDown, KeyName: "F9"})
+	chords = eng.Chords()
+	if len(chords) != 1 {
+		t.Fatalf("expected one chord, got %d", len(chords))
+	}
+	if chords[0].Action.Title != "" {
+		t.Fatalf("Notepad F9 should have no semantic label, got %q", chords[0].Action.Title)
+	}
+}
+
+func TestSemanticContextToggle(t *testing.T) {
+	matcher := semantic.NewDefaultMatcher()
+	eng := NewEngine(
+		WithFilterMode(FilterSmart),
+		WithMatcher(matcher),
+		WithAppContext(context.AppContext{Exe: "devcpp.exe", Title: "main.cpp - Dev-C++"}),
+	)
+	defer eng.Stop()
+
+	// Context intelligence off: app profiles disappear, but universal decoding
+	// (and the separate Action Subtitles switch) keeps working.
+	eng.SetSemanticContext(false)
+	eng.HandleEvent(hook.InputEvent{Type: hook.EventKeyDown, KeyName: "F9"})
+	chords := eng.Chords()
+	if len(chords) != 1 || chords[0].Action.Title != "" {
+		t.Fatalf("expected no app-specific action when context is disabled, got %+v", chords)
+	}
+
+	eng.Clear()
+	eng.HandleEvent(hook.InputEvent{Type: hook.EventKeyDown, KeyName: "C", Modifiers: hook.ModCtrl})
+	chords = eng.Chords()
+	if len(chords) != 1 || chords[0].Action.Title != "Copy" {
+		t.Fatalf("expected universal Copy when context is disabled, got %+v", chords)
+	}
+	if chords[0].AppName != "" {
+		t.Fatalf("expected no app badge when context is disabled, got %q", chords[0].AppName)
+	}
+
+	// Re-enabling context restores the Dev-C++ interpretation.
+	eng.SetSemanticContext(true)
+	eng.Clear()
+	eng.HandleEvent(hook.InputEvent{Type: hook.EventKeyDown, KeyName: "F9"})
+	chords = eng.Chords()
+	if len(chords) != 1 || chords[0].Action.Title != "Compile" {
+		t.Fatalf("expected Dev-C++ Compile once context is re-enabled, got %+v", chords)
+	}
+	if chords[0].AppName != "Dev-C++" {
+		t.Fatalf("expected Dev-C++ app badge, got %q", chords[0].AppName)
+	}
+}
+
+func TestSequenceExpiresOutsideWindow(t *testing.T) {
+	matcher := semantic.NewDefaultMatcher()
+	eng := NewEngine(
+		WithFilterMode(FilterSmart),
+		WithMatcher(matcher),
+		WithAppContext(context.AppContext{Exe: "code.exe", Title: "main.go - Visual Studio Code"}),
+	)
+	defer eng.Stop()
+
+	start := time.Now()
+	eng.HandleEvent(hook.InputEvent{
+		Type:      hook.EventKeyDown,
+		KeyName:   "K",
+		Modifiers: hook.ModCtrl,
+		Timestamp: start,
+	})
+	eng.HandleEvent(hook.InputEvent{
+		Type:      hook.EventKeyDown,
+		KeyName:   "S",
+		Modifiers: hook.ModCtrl,
+		Timestamp: start.Add(semantic.DefaultSequenceWindow + 100*time.Millisecond),
+	})
+
+	chords := eng.Chords()
+	last := chords[len(chords)-1]
+	if last.IsSequence {
+		t.Fatal("chords outside the sequence window must not combine")
 	}
 }

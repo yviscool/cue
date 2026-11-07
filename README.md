@@ -47,8 +47,11 @@ Engineered for tech speakers, educators, live streamers, and screencasters, Cue 
   - Multi-click badges stay on stage for 1.2s for optimal audience perception, while button click highlights dim dynamically.
 - 🧭 **Refined Directional Scroll Arrows**:
   - Sleek, high-contrast directional chevrons inside the mouse wheel slot indicate scroll up/down directions with perfect breathing room.
-- 🧠 **Semantic Action Recognition**:
+- 🧠 **Context-Aware Semantic Action Recognition**:
   - Automatically identifies universal shortcuts and displays human-readable intent subtitles (e.g., `Ctrl + C` $\rightarrow$ *Copy*, `Alt + Tab` $\rightarrow$ *Switch Window*, `Ctrl + Z` $\rightarrow$ *Undo*).
+  - Detects the foreground application and adapts the meaning: **VS Code**, **JetBrains**, **Visual Studio**, **Dev-C++**, **IDLE**, browsers, terminals, Office, Figma, Slack, and more.
+  - Supports two-chord sequences (`Ctrl + K` `Ctrl + S` $\rightarrow$ *Save All*), an optional application badge, and user overrides in `config.json`.
+  - Resolution is cached per foreground change, so the hook path stays allocation-free and the FPS never drops.
 - 🔤 **Alphanumeric Word Grouping & Backspace Absorption**:
   - Seamlessly combines character strokes into readable words; pressing Backspace automatically trims trailing characters in real time.
 - 🔊 **Keystroke Audio & Spatial Panning (New in v1.2.0)**:

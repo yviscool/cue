@@ -9,19 +9,20 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/yviscool/cue/internal/context"
 	"github.com/yviscool/cue/internal/hook"
 	"github.com/yviscool/cue/internal/semantic"
 )
 
 const (
-	defaultDecayInterval   = 50 * time.Millisecond
-	defaultStreakThreshold = 1200 * time.Millisecond
-	defaultLingerShort     = 1800 * time.Millisecond
-	defaultLingerLong      = 2500 * time.Millisecond
+	defaultDecayInterval    = 50 * time.Millisecond
+	defaultStreakThreshold  = 1200 * time.Millisecond
+	defaultLingerShort      = 1800 * time.Millisecond
+	defaultLingerLong       = 2500 * time.Millisecond
 	defaultMouseClickLinger = 180 * time.Millisecond
 	defaultMouseBadgeLinger = 1200 * time.Millisecond
-	defaultMaxChords       = 5
-	defaultThemeName       = "Default"
+	defaultMaxChords        = 5
+	defaultThemeName        = "Default"
 )
 
 // Engine is the central input state machine and cadence decay engine.
@@ -39,7 +40,8 @@ type Engine struct {
 	soundPlayer      SoundPlayer
 	soundActive      bool
 	matcher          semantic.Matcher
-	appContext       string
+	appContext       context.AppContext
+	semanticContext  bool
 	themeName        string
 	showMouseClicks  bool
 	mouseClickLinger time.Duration
@@ -64,6 +66,13 @@ type Engine struct {
 	chordSeq        uint64
 	recentStrokes   []time.Time // timestamps of recent keystrokes within sliding window
 	currentWPM      int         // instantaneous words per minute
+
+	// Two-chord sequence tracking (e.g. Ctrl+K Ctrl+S). The first chord is
+	// remembered for a short window; if the second arrives in time and the
+	// matcher knows the pair, the two cues collapse into one.
+	seqMods hook.Modifiers
+	seqKey  string
+	seqAt   time.Time
 
 	// Mouse retirement timers
 	mouseRetireTimer *time.Timer
@@ -170,9 +179,16 @@ func WithMatcher(m semantic.Matcher) Option {
 }
 
 // WithAppContext sets initial application context.
-func WithAppContext(ctx string) Option {
+func WithAppContext(ctx context.AppContext) Option {
 	return func(e *Engine) {
 		e.appContext = ctx
+	}
+}
+
+// WithSemanticContext enables or disables context-aware shortcut interpretation.
+func WithSemanticContext(enabled bool) Option {
+	return func(e *Engine) {
+		e.semanticContext = enabled
 	}
 }
 
@@ -234,6 +250,8 @@ func NewEngine(opts ...Option) *Engine {
 		mouseBadgeLinger: defaultMouseBadgeLinger,
 		maxChords:        defaultMaxChords,
 		soundActive:      true,
+		matcher:          nil,
+		semanticContext:  true,
 		themeName:        defaultThemeName,
 		showMouseClicks:  false,
 		dragThreshold:    50,
@@ -576,6 +594,9 @@ func (e *Engine) Clear() {
 	e.clickCount = 0
 	e.lastChordKey = ""
 	e.lastChordMods = hook.ModNone
+	e.seqAt = time.Time{}
+	e.seqKey = ""
+	e.seqMods = hook.ModNone
 	e.emitStateLocked()
 }
 
@@ -733,6 +754,65 @@ func (e *Engine) pushChordLocked(now time.Time, mods hook.Modifiers, keyName str
 	velocity := velocityForWPM(wpm)
 	isFinisher := isFinisherKey(keyName)
 
+	// Privacy is evaluated once per keystroke: it feeds the sequence guard, the
+	// placeholder mask, and the matcher's typed-pattern history.
+	isPrivate := false
+	if e.matcher != nil {
+		isPrivate = e.matcher.IsSensitive(e.appContext, keyName)
+	}
+
+	// ---- Two-chord shortcut sequences -------------------------------------
+	// Ctrl+K Ctrl+S style shortcuts are common in editors. If the previous
+	// chord is still inside the sequence window and the matcher knows the pair,
+	// collapse both chords into one cue instead of showing two unrelated ones.
+	//
+	// Both chords must carry a modifier: FilterSmart drops bare keystrokes
+	// before they reach this point, so a sequence ending in a plain key (VS
+	// Code's Ctrl+K S) cannot be collapsed yet.
+	if !isPrivate && e.semanticContext && e.matcher != nil && mods != hook.ModNone &&
+		!e.seqAt.IsZero() && now.Sub(e.seqAt) >= 0 && now.Sub(e.seqAt) <= semantic.DefaultSequenceWindow {
+		if res, ok := e.matcher.MatchSequence(e.appContext, e.seqMods, e.seqKey, mods, keyName); ok {
+			keys := buildKeyCaps(e.seqMods, e.seqKey, true)
+			keys = append(keys, KeyCap{Label: "→", IsModifier: true})
+			keys = append(keys, buildKeyCaps(mods, keyName, isHeld)...)
+
+			// Drop the pending first-chord cue so the combined form replaces it.
+			if n := len(e.chords); n > 0 {
+				last := e.chords[n-1]
+				if !last.Timestamp.Before(e.seqAt.Add(-5 * time.Millisecond)) {
+					e.chords = e.chords[:n-1]
+				}
+			}
+
+			chord := DisplayChord{
+				ID:         fmt.Sprintf("chord-%d-%d", now.UnixNano(), atomic.AddUint64(&e.chordSeq, 1)),
+				Keys:       keys,
+				Streak:     1,
+				Action:     res.Action,
+				Timestamp:  now,
+				ExpiresAt:  now.Add(e.lingerLong),
+				IsActive:   isHeld,
+				Velocity:   velocity,
+				IsFinisher: isFinisher,
+				Confidence: res.Confidence,
+				AppName:    res.AppName,
+				IsSequence: true,
+			}
+			e.chords = append(e.chords, chord)
+			if len(e.chords) > e.maxChords {
+				e.chords = e.chords[len(e.chords)-e.maxChords:]
+			}
+			e.lastChordKey = keyName
+			e.lastChordMods = mods
+			e.seqAt = time.Time{}
+			e.seqKey = ""
+			e.seqMods = hook.ModNone
+			e.playAcoustic(SoundClick, keyName)
+			e.emitStateLocked()
+			return
+		}
+	}
+
 	// Streak check: identical to the most recent chord (same modifiers + same key) within threshold
 	// NOTE: Scroll wheel events are continuous fluid motions and must never accumulate streak badges.
 	isScroll := strings.EqualFold(keyName, "Scroll Down") || strings.EqualFold(keyName, "Scroll Up")
@@ -760,39 +840,24 @@ func (e *Engine) pushChordLocked(now time.Time, mods hook.Modifiers, keyName str
 	}
 
 	// Construct DisplayChord
-	var keys []KeyCap
-	if mods.HasCtrl() {
-		keys = append(keys, KeyCap{Label: "Ctrl", IsModifier: true, IsHeld: true})
-	}
-	if mods.HasShift() {
-		keys = append(keys, KeyCap{Label: "Shift", IsModifier: true, IsHeld: true})
-	}
-	if mods.HasAlt() {
-		keys = append(keys, KeyCap{Label: "Alt", IsModifier: true, IsHeld: true})
-	}
-	if mods.HasSuper() {
-		keys = append(keys, KeyCap{Label: "Win", IsModifier: true, IsHeld: true})
-	}
+	keys := buildKeyCaps(mods, keyName, isHeld)
 
-	primaryKeyCap := KeyCap{
-		Label:      keyName,
-		IsModifier: false,
-		IsHeld:     isHeld,
-	}
-	keys = append(keys, primaryKeyCap)
-
-	// Call semantic matcher MatchAction
-	var action semantic.ActionInfo
+	// Resolve the semantic interpretation for one chord. When context
+	// intelligence is disabled, universal decoding and global overrides still
+	// work; only app profiles and categories are skipped.
+	var result semantic.MatchResult
 	if e.matcher != nil {
-		if act, ok := e.matcher.MatchAction(e.appContext, mods, keyName); ok {
-			action = act
+		if e.semanticContext {
+			result = e.matcher.MatchAction(e.appContext, mods, keyName)
+		} else {
+			result = e.matcher.MatchUniversal(mods, keyName)
 		}
 	}
+	action := result.Action
 
-	// Privacy mask check
-	isPrivate := false
-	if e.matcher != nil && e.matcher.IsSensitive(e.appContext, keyName) {
-		isPrivate = true
+	// Privacy mask check: sensitive contexts replace the physical key with a
+	// single protected placeholder.
+	if isPrivate {
 		keys = []KeyCap{{Label: "[🔒 Private]", IsModifier: false, IsHeld: isHeld}}
 	}
 
@@ -815,6 +880,8 @@ func (e *Engine) pushChordLocked(now time.Time, mods hook.Modifiers, keyName str
 		IsPrivate:  isPrivate,
 		Velocity:   velocity,
 		IsFinisher: isFinisher,
+		Confidence: result.Confidence,
+		AppName:    result.AppName,
 	}
 
 	// Append and enforce max limit
@@ -826,10 +893,37 @@ func (e *Engine) pushChordLocked(now time.Time, mods hook.Modifiers, keyName str
 	e.lastChordKey = keyName
 	e.lastChordMods = mods
 
+	// Remember this chord as a possible first half of a sequence. Plain keys
+	// and finishers reset the pending state, so a stray key can never combine
+	// with a much later shortcut.
+	if e.semanticContext && e.matcher != nil && mods != hook.ModNone && !isPrivate {
+		e.seqMods, e.seqKey, e.seqAt = mods, keyName, now
+	} else {
+		e.seqAt = time.Time{}
+	}
+
 	// Acoustic feedback: Click for regular key/shortcut with spatial stage placement
 	e.playAcoustic(SoundClick, keyName)
 
 	e.emitStateLocked()
+}
+
+// buildKeyCaps renders the modifier prefix and primary key for a chord.
+func buildKeyCaps(mods hook.Modifiers, keyName string, held bool) []KeyCap {
+	keys := make([]KeyCap, 0, 5)
+	if mods.HasCtrl() {
+		keys = append(keys, KeyCap{Label: "Ctrl", IsModifier: true, IsHeld: held})
+	}
+	if mods.HasShift() {
+		keys = append(keys, KeyCap{Label: "Shift", IsModifier: true, IsHeld: held})
+	}
+	if mods.HasAlt() {
+		keys = append(keys, KeyCap{Label: "Alt", IsModifier: true, IsHeld: held})
+	}
+	if mods.HasSuper() {
+		keys = append(keys, KeyCap{Label: "Win", IsModifier: true, IsHeld: held})
+	}
+	return append(keys, KeyCap{Label: keyName, IsHeld: held})
 }
 
 func mouseButtonName(btn hook.MouseButton) string {
@@ -1287,11 +1381,43 @@ func (e *Engine) SetMatcher(m semantic.Matcher) {
 	e.matcher = m
 }
 
-// SetAppContext updates the active application context for semantic matching.
-func (e *Engine) SetAppContext(ctx string) {
+// SetAppContext updates the cached foreground application snapshot. It is
+// intentionally cheap: the context provider only publishes when the foreground
+// window actually changes, so this never runs on every keystroke.
+func (e *Engine) SetAppContext(ctx context.AppContext) {
 	e.mu.Lock()
-	defer e.mu.Unlock()
+	changed := e.appContext.Key() != ctx.Key() || e.appContext.Seq != ctx.Seq
 	e.appContext = ctx
+	// A foreground switch invalidates any pending sequence first chord.
+	if changed {
+		e.seqAt = time.Time{}
+	}
+	e.mu.Unlock()
+}
+
+// AppContext returns the current foreground application snapshot.
+func (e *Engine) AppContext() context.AppContext {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return e.appContext
+}
+
+// SetSemanticContext enables or disables context-aware action subtitles. Privacy
+// masking remains active regardless of this switch.
+func (e *Engine) SetSemanticContext(enabled bool) {
+	e.mu.Lock()
+	if e.semanticContext != enabled {
+		e.seqAt = time.Time{}
+	}
+	e.semanticContext = enabled
+	e.mu.Unlock()
+}
+
+// SemanticContext reports whether contextual interpretation is enabled.
+func (e *Engine) SemanticContext() bool {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return e.semanticContext
 }
 
 // SetThemeName updates the UI theme name and emits updated UIState.

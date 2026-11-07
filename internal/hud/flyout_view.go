@@ -69,8 +69,8 @@ func (fc *FlyoutController) RenderFlyout(c *ui.Context) {
 					}
 					ui.Text(c, radioText).FontSize(14).TextColor(t.Accent).Bold()
 					ui.Column(c).Gap(2).Children(func() {
-						ui.Text(c, thm.DisplayName).FontSize(13).Bold()
-						ui.Text(c, thm.Description).FontSize(10).TextColor(t.TextMuted)
+						ui.Text(c, themeDisplayName(thm.Name)).FontSize(13).Bold()
+						ui.Text(c, themeDescription(thm.Name)).FontSize(10).TextColor(t.TextMuted)
 					})
 				})
 

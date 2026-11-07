@@ -197,4 +197,3 @@ func TestColorToHex(t *testing.T) {
 		t.Errorf("expected #ffffff2a, got %s", h)
 	}
 }
-

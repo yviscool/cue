@@ -1,28 +1,35 @@
 package semantic
 
 import (
+	"fmt"
 	"strings"
 	"sync"
 	"time"
 	"unicode"
 
+	"github.com/yviscool/cue/internal/context"
 	"github.com/yviscool/cue/internal/hook"
 )
 
-// comboKey represents a unique modifier combination and normalized key name.
-type comboKey struct {
-	mods hook.Modifiers
-	key  string
-}
-
-// DefaultMatcher implements Matcher with a curated shortcut dictionary
-// and context/keystroke-based privacy detection.
+// DefaultMatcher implements Matcher with a curated, context-aware shortcut
+// registry and context/keystroke-based privacy detection.
+//
+// Hot path: MatchAction performs at most a few map lookups. Expensive context
+// analysis (profile resolution, sensitive-window keyword scan) is cached and
+// recomputed only when the foreground AppContext changes.
 type DefaultMatcher struct {
-	mu           sync.Mutex
-	shortcuts    map[comboKey]ActionInfo
-	appShortcuts map[string]map[comboKey]ActionInfo
+	mu        sync.Mutex
+	registry  *Registry
+	overrides overrideSet
 
-	// Keystroke history and privacy state
+	// Context cache, invalidated by AppContext.Seq.
+	ctxSeq       uint64
+	ctxKey       string
+	ctxProfile   *Profile
+	ctxCategory  context.Category
+	ctxSensitive bool
+
+	// Keystroke history and privacy state.
 	history       []rune
 	sensitiveLeft int
 	lastInputTime time.Time
@@ -30,15 +37,12 @@ type DefaultMatcher struct {
 
 var _ Matcher = (*DefaultMatcher)(nil)
 
-// NewMatcher creates a DefaultMatcher with standard curated shortcuts.
+// NewMatcher creates a DefaultMatcher with the standard registry.
 func NewMatcher() *DefaultMatcher {
-	m := &DefaultMatcher{
-		shortcuts:    make(map[comboKey]ActionInfo),
-		appShortcuts: make(map[string]map[comboKey]ActionInfo),
-		history:      make([]rune, 0, 64),
+	return &DefaultMatcher{
+		registry: NewRegistry(),
+		history:  make([]rune, 0, 64),
 	}
-	m.initShortcuts()
-	return m
 }
 
 // NewDefaultMatcher is an alias for NewMatcher.
@@ -46,225 +50,267 @@ func NewDefaultMatcher() *DefaultMatcher {
 	return NewMatcher()
 }
 
-// NormalizeKey standardizes key representations (e.g. "+"/"=", "ArrowUp"/"Up").
-func NormalizeKey(keyName string) string {
-	k := strings.ToUpper(strings.TrimSpace(keyName))
-	switch k {
-	case "+", "=", "PLUS", "ADD":
-		return "+"
-	case "-", "_", "MINUS", "SUBTRACT":
-		return "-"
-	case "`", "~", "BACKQUOTE", "GRAVE", "TILDE":
-		return "`"
-	case "/", "SLASH":
-		return "/"
-	case "ARROWUP", "UPARROW":
-		return "UP"
-	case "ARROWDOWN", "DOWNARROW":
-		return "DOWN"
-	case "ARROWLEFT", "LEFTARROW":
-		return "LEFT"
-	case "ARROWRIGHT", "RIGHTARROW":
-		return "RIGHT"
-	case "ESCAPE":
-		return "ESC"
-	case "RETURN":
-		return "ENTER"
-	case "SPACEBAR", " ":
-		return "SPACE"
-	case "BKSP", "BS":
-		return "BACKSPACE"
-	case "DEL":
-		return "DELETE"
-	case "LEFT CLICK", "MOUSE LEFT", "LBUTTON":
-		return "LEFT CLICK"
-	case "RIGHT CLICK", "MOUSE RIGHT", "RBUTTON":
-		return "RIGHT CLICK"
-	case "MIDDLE CLICK", "MOUSE MIDDLE", "MBUTTON":
-		return "MIDDLE CLICK"
-	case "SCROLL UP", "SCROLLUP", "WHEEL UP", "WHEELUP":
-		return "SCROLL UP"
-	case "SCROLL DOWN", "SCROLLDOWN", "WHEEL DOWN", "WHEELDOWN":
-		return "SCROLL DOWN"
-	case "PGUP":
-		return "PAGEUP"
-	case "PGDN":
-		return "PAGEDOWN"
-	case "INS":
-		return "INSERT"
-	default:
-		return k
+// Registry returns the immutable shortcut knowledge base.
+func (m *DefaultMatcher) Registry() *Registry {
+	return m.registry
+}
+
+// SetOverrides installs user-defined shortcut interpretations. Overrides are
+// indexed once and then resolved with the same priority as built-in profiles,
+// but above them (user intent always wins).
+func (m *DefaultMatcher) SetOverrides(list []Override) {
+	set := buildOverrideSet(list)
+	m.mu.Lock()
+	m.overrides = set
+	m.mu.Unlock()
+}
+
+// ParseChord parses a human-readable chord such as "Ctrl+Shift+P" into a
+// modifier mask and canonical primary key. Shifted symbols fold into the Shift
+// modifier, so "Ctrl+Shift+1" and "Ctrl+!" parse identically.
+func ParseChord(chord string) (hook.Modifiers, string, error) {
+	s := strings.TrimSpace(chord)
+	if s == "" {
+		return hook.ModNone, "", fmt.Errorf("empty chord")
 	}
-}
-
-func (m *DefaultMatcher) register(mods hook.Modifiers, key string, action ActionInfo) {
-	norm := NormalizeKey(key)
-	m.shortcuts[comboKey{mods: mods, key: norm}] = action
-}
-
-func (m *DefaultMatcher) registerApp(appKey string, mods hook.Modifiers, key string, action ActionInfo) {
-	appKey = strings.ToLower(appKey)
-	if _, ok := m.appShortcuts[appKey]; !ok {
-		m.appShortcuts[appKey] = make(map[comboKey]ActionInfo)
+	parts := strings.Split(s, "+")
+	var mods hook.Modifiers
+	var keys []string
+	for i, raw := range parts {
+		token := strings.TrimSpace(raw)
+		if token == "" {
+			// A trailing empty token represents a literal '+' key ("Ctrl++").
+			if i > 0 && i == len(parts)-1 {
+				keys = append(keys, "+")
+			}
+			continue
+		}
+		switch strings.ToLower(token) {
+		case "ctrl", "control", "controlleft", "controlright":
+			mods |= hook.ModCtrl
+		case "shift", "shiftleft", "shiftright":
+			mods |= hook.ModShift
+		case "alt", "menu", "option", "altleft", "altright":
+			mods |= hook.ModAlt
+		case "win", "super", "cmd", "command", "meta", "metaleft", "metaright":
+			mods |= hook.ModSuper
+		default:
+			keys = append(keys, token)
+		}
 	}
-	norm := NormalizeKey(key)
-	m.appShortcuts[appKey][comboKey{mods: mods, key: norm}] = action
+	if len(keys) != 1 {
+		return hook.ModNone, "", fmt.Errorf("chord %q must contain exactly one non-modifier key", chord)
+	}
+	key, impliedShift := canonicalKey(keys[0])
+	if key == "" {
+		return hook.ModNone, "", fmt.Errorf("chord %q has an empty key", chord)
+	}
+	if impliedShift {
+		mods |= hook.ModShift
+	}
+	return mods, key, nil
 }
 
-func (m *DefaultMatcher) initShortcuts() {
-	// ==========================================
-	// Universal / Windows Shortcuts
-	// ==========================================
-	// Edit operations
-	m.register(hook.ModCtrl, "C", ActionInfo{Title: "Copy", Category: "Edit", Description: "Copy selection to clipboard"})
-	m.register(hook.ModCtrl, "X", ActionInfo{Title: "Cut", Category: "Edit", Description: "Cut selection to clipboard"})
-	m.register(hook.ModCtrl, "V", ActionInfo{Title: "Paste", Category: "Edit", Description: "Paste clipboard contents"})
-	m.register(hook.ModCtrl, "Z", ActionInfo{Title: "Undo", Category: "Edit", Description: "Undo previous action"})
-	m.register(hook.ModCtrl, "Y", ActionInfo{Title: "Redo", Category: "Edit", Description: "Redo undone action"})
-	m.register(hook.ModCtrl|hook.ModShift, "Z", ActionInfo{Title: "Redo", Category: "Edit", Description: "Redo undone action"})
-	m.register(hook.ModCtrl, "A", ActionInfo{Title: "Select All", Category: "Edit", Description: "Select all items or text"})
-	m.register(hook.ModCtrl, "S", ActionInfo{Title: "Save", Category: "File", Description: "Save current document or state"})
-	m.register(hook.ModCtrl, "F", ActionInfo{Title: "Find", Category: "Search", Description: "Open find bar or search query"})
-	m.register(hook.ModCtrl, "H", ActionInfo{Title: "Replace", Category: "Search", Description: "Open find and replace"})
-	m.register(hook.ModCtrl, "P", ActionInfo{Title: "Quick Open", Category: "Navigation", Description: "Quickly open file or jump to target"})
-	m.register(hook.ModCtrl|hook.ModShift, "P", ActionInfo{Title: "Command Palette", Category: "System", Description: "Open command palette"})
-
-	// Window & System management
-	m.register(hook.ModAlt, "TAB", ActionInfo{Title: "Switch App", Category: "Window", Description: "Switch between active applications"})
-	m.register(hook.ModAlt|hook.ModShift, "TAB", ActionInfo{Title: "Switch App", Category: "Window", Description: "Switch between active applications (reverse)"})
-	m.register(hook.ModSuper, "D", ActionInfo{Title: "Show Desktop", Category: "System", Description: "Minimize all windows to display desktop"})
-	m.register(hook.ModSuper, "E", ActionInfo{Title: "File Explorer", Category: "System", Description: "Open Windows File Explorer"})
-	m.register(hook.ModSuper, "L", ActionInfo{Title: "Lock PC", Category: "System", Description: "Lock Windows workstation"})
-	m.register(hook.ModSuper, "V", ActionInfo{Title: "Clipboard History", Category: "System", Description: "Open Windows clipboard history popup"})
-	m.register(hook.ModSuper|hook.ModShift, "S", ActionInfo{Title: "Snipping Tool", Category: "System", Description: "Capture screen snip or screenshot"})
-	m.register(hook.ModAlt, "F4", ActionInfo{Title: "Close Window", Category: "Window", Description: "Close active window or application"})
-
-	// Tabs & Navigation
-	m.register(hook.ModCtrl, "W", ActionInfo{Title: "Close Tab", Category: "Tab", Description: "Close active tab or document"})
-	m.register(hook.ModCtrl, "T", ActionInfo{Title: "New Tab", Category: "Tab", Description: "Open new tab"})
-	m.register(hook.ModCtrl|hook.ModShift, "T", ActionInfo{Title: "Reopen Closed Tab", Category: "Tab", Description: "Restore recently closed tab"})
-	m.register(hook.ModCtrl, "R", ActionInfo{Title: "Refresh", Category: "Navigation", Description: "Reload active page or view"})
-	m.register(hook.ModNone, "F5", ActionInfo{Title: "Refresh", Category: "Navigation", Description: "Reload active page or view"})
-	m.register(hook.ModCtrl, "F5", ActionInfo{Title: "Refresh", Category: "Navigation", Description: "Hard reload page, ignoring cache"})
-
-	// Zoom Controls (handling +, =, and shift variations, as well as mouse wheel)
-	zoomIn := ActionInfo{Title: "Zoom In", Category: "View", Description: "Increase magnification"}
-	m.register(hook.ModCtrl, "+", zoomIn)
-	m.register(hook.ModCtrl, "=", zoomIn)
-	m.register(hook.ModCtrl|hook.ModShift, "+", zoomIn)
-	m.register(hook.ModCtrl|hook.ModShift, "=", zoomIn)
-	m.register(hook.ModCtrl, "SCROLL UP", zoomIn)
-
-	zoomOut := ActionInfo{Title: "Zoom Out", Category: "View", Description: "Decrease magnification"}
-	m.register(hook.ModCtrl, "-", zoomOut)
-	m.register(hook.ModCtrl|hook.ModShift, "-", zoomOut)
-	m.register(hook.ModCtrl, "SCROLL DOWN", zoomOut)
-
-	m.register(hook.ModCtrl, "0", ActionInfo{Title: "Reset Zoom", Category: "View", Description: "Reset magnification to default (100%)"})
-
-	// Additional Universal Shortcuts
-	m.register(hook.ModCtrl, "N", ActionInfo{Title: "New Window", Category: "File", Description: "Open a new window or document"})
-	m.register(hook.ModCtrl, "O", ActionInfo{Title: "Open File", Category: "File", Description: "Open an existing file"})
-	m.register(hook.ModCtrl|hook.ModShift, "S", ActionInfo{Title: "Save As", Category: "File", Description: "Save current document under a new name"})
-	m.register(hook.ModSuper, "R", ActionInfo{Title: "Run Dialog", Category: "System", Description: "Open Windows Run prompt"})
-	m.register(hook.ModSuper, "I", ActionInfo{Title: "Settings", Category: "System", Description: "Open Windows Settings"})
-	m.register(hook.ModSuper, "A", ActionInfo{Title: "Action Center", Category: "System", Description: "Open Windows Quick Settings and Notifications"})
-	m.register(hook.ModCtrl, "TAB", ActionInfo{Title: "Next Tab", Category: "Tab", Description: "Switch to next tab"})
-	m.register(hook.ModCtrl|hook.ModShift, "TAB", ActionInfo{Title: "Previous Tab", Category: "Tab", Description: "Switch to previous tab"})
-
-	// ==========================================
-	// Code Editors (VS Code / JetBrains / Zed / Sublime)
-	// ==========================================
-	m.register(hook.ModCtrl, "B", ActionInfo{Title: "Toggle Sidebar", Category: "Editor", Description: "Show or hide editor primary sidebar"})
-	m.register(hook.ModCtrl, "`", ActionInfo{Title: "Toggle Terminal", Category: "Editor", Description: "Show or hide integrated terminal"})
-	m.register(hook.ModCtrl, "/", ActionInfo{Title: "Toggle Comment", Category: "Editor", Description: "Comment or uncomment line or selection"})
-	m.register(hook.ModAlt, "UP", ActionInfo{Title: "Move Line Up", Category: "Editor", Description: "Move active line or selection up"})
-	m.register(hook.ModAlt, "DOWN", ActionInfo{Title: "Move Line Down", Category: "Editor", Description: "Move active line or selection down"})
-	m.register(hook.ModShift|hook.ModAlt, "DOWN", ActionInfo{Title: "Duplicate Line Down", Category: "Editor", Description: "Duplicate active line or selection downwards"})
-	m.register(hook.ModShift|hook.ModAlt, "UP", ActionInfo{Title: "Duplicate Line Up", Category: "Editor", Description: "Duplicate active line or selection upwards"})
-	m.register(hook.ModCtrl, "D", ActionInfo{Title: "Add Selection to Next Find Match", Category: "Editor", Description: "Add next match of selected word to multi-cursor"})
-	m.register(hook.ModNone, "F12", ActionInfo{Title: "Go to Definition", Category: "Navigation", Description: "Jump to symbol declaration or definition"})
-	m.register(hook.ModShift, "F12", ActionInfo{Title: "Find References", Category: "Search", Description: "Find all usages of symbol across workspace"})
-	m.register(hook.ModNone, "F2", ActionInfo{Title: "Rename Symbol", Category: "Refactor", Description: "Rename symbol across workspace"})
-	m.register(hook.ModCtrl|hook.ModShift, "O", ActionInfo{Title: "Go to Symbol", Category: "Navigation", Description: "Navigate to symbol in current file"})
-	m.register(hook.ModCtrl, "G", ActionInfo{Title: "Go to Line", Category: "Navigation", Description: "Jump to specified line number"})
-
-	// Additional Editor Shortcuts
-	m.register(hook.ModCtrl|hook.ModShift, "F", ActionInfo{Title: "Find in Files", Category: "Search", Description: "Global search across entire workspace"})
-	m.register(hook.ModCtrl|hook.ModShift, "H", ActionInfo{Title: "Replace in Files", Category: "Search", Description: "Global replace across entire workspace"})
-	m.register(hook.ModCtrl|hook.ModShift, "K", ActionInfo{Title: "Delete Line", Category: "Editor", Description: "Delete active line"})
-	m.register(hook.ModCtrl, "J", ActionInfo{Title: "Toggle Panel", Category: "Editor", Description: "Show or hide bottom panel"})
-	m.register(hook.ModCtrl, "SPACE", ActionInfo{Title: "Trigger Suggestion", Category: "Editor", Description: "Open IntelliSense autocomplete list"})
-
-	// ==========================================
-	// App-Specific Context Overrides (Browser & Terminal)
-	// ==========================================
-	// Web Browsers (Chrome, Edge, Firefox, Brave)
-	m.registerApp("browser", hook.ModCtrl, "D", ActionInfo{Title: "Bookmark Tab", Category: "Browser", Description: "Bookmark current page"})
-	m.registerApp("browser", hook.ModCtrl|hook.ModShift, "B", ActionInfo{Title: "Toggle Bookmarks Bar", Category: "Browser", Description: "Show or hide bookmarks bar"})
-	m.registerApp("browser", hook.ModCtrl, "J", ActionInfo{Title: "Downloads", Category: "Browser", Description: "Open browser downloads tab"})
-	m.registerApp("browser", hook.ModCtrl, "H", ActionInfo{Title: "History", Category: "Browser", Description: "Open browsing history"})
-	m.registerApp("browser", hook.ModNone, "F12", ActionInfo{Title: "Developer Tools", Category: "Browser", Description: "Open Developer Tools console"})
-	m.registerApp("browser", hook.ModCtrl|hook.ModShift, "I", ActionInfo{Title: "Developer Tools", Category: "Browser", Description: "Open Developer Tools console"})
-
-	// Terminal / Command Line
-	m.registerApp("terminal", hook.ModCtrl, "C", ActionInfo{Title: "Interrupt Process", Category: "Terminal", Description: "Send SIGINT to interrupt active process"})
-	m.registerApp("terminal", hook.ModCtrl, "D", ActionInfo{Title: "Exit / EOF", Category: "Terminal", Description: "Send EOF or close session"})
-	m.registerApp("terminal", hook.ModCtrl, "L", ActionInfo{Title: "Clear Terminal", Category: "Terminal", Description: "Clear terminal screen buffer"})
+// ParseOverride converts a user configuration entry into an Override.
+func ParseOverride(app, chord, label, description string) (Override, error) {
+	mods, key, err := ParseChord(chord)
+	if err != nil {
+		return Override{}, err
+	}
+	label = strings.TrimSpace(label)
+	if label == "" {
+		return Override{}, fmt.Errorf("custom shortcut %q has an empty label", chord)
+	}
+	return Override{
+		App:  strings.ToLower(strings.TrimSpace(app)),
+		Mods: mods,
+		Key:  key,
+		Action: ActionInfo{
+			Title:       label,
+			Category:    "Custom",
+			Description: description,
+		},
+	}, nil
 }
 
-func matchAppCategory(appContext string) string {
-	app := strings.ToLower(appContext)
-	switch {
-	case strings.Contains(app, "chrome"),
-		strings.Contains(app, "edge"),
-		strings.Contains(app, "firefox"),
-		strings.Contains(app, "brave"),
-		strings.Contains(app, "opera"),
-		strings.Contains(app, "safari"),
-		strings.Contains(app, "vivaldi"):
-		return "browser"
-	case strings.Contains(app, "cmd.exe"),
-		strings.Contains(app, "powershell"),
-		strings.Contains(app, "windowsterminal"),
-		strings.Contains(app, "wt.exe"),
-		strings.Contains(app, "bash"),
-		strings.Contains(app, "alacritty"),
-		strings.Contains(app, "wezterm"),
-		strings.Contains(app, "kitty"):
-		return "terminal"
-	default:
-		return ""
+// overrideSet is a pre-indexed, immutable set of user overrides.
+type overrideSet struct {
+	byApp map[string]map[comboKey]ActionInfo
+	count int
+}
+
+func buildOverrideSet(list []Override) overrideSet {
+	set := overrideSet{byApp: make(map[string]map[comboKey]ActionInfo)}
+	for _, o := range list {
+		key := strings.ToLower(strings.TrimSpace(o.App))
+		if key == "*" {
+			key = ""
+		}
+		ck := canonicalCombo(o.Mods, o.Key)
+		if ck.key == "" {
+			continue
+		}
+		if set.byApp[key] == nil {
+			set.byApp[key] = make(map[comboKey]ActionInfo)
+		}
+		set.byApp[key][ck] = o.Action
+		set.count++
+	}
+	return set
+}
+
+func (o overrideSet) lookup(app context.AppContext, profile *Profile, category context.Category, combo comboKey) (ActionInfo, bool) {
+	if o.count == 0 {
+		return ActionInfo{}, false
+	}
+	if exe := context.NormalizeExe(app.Exe); exe != "" {
+		if m, ok := o.byApp[exe]; ok {
+			if a, found := m[combo]; found {
+				return a, true
+			}
+		}
+	}
+	if profile != nil {
+		if a, found := o.lookupApp(profile.ID, combo); found {
+			return a, true
+		}
+	}
+	if category != "" {
+		if a, found := o.lookupApp(string(category), combo); found {
+			return a, true
+		}
+	}
+	if a, found := o.lookupApp("", combo); found {
+		return a, true
+	}
+	return ActionInfo{}, false
+}
+
+func (o overrideSet) lookupApp(app string, combo comboKey) (ActionInfo, bool) {
+	m, ok := o.byApp[strings.ToLower(strings.TrimSpace(app))]
+	if !ok {
+		return ActionInfo{}, false
+	}
+	a, found := m[combo]
+	return a, found
+}
+
+// prepareLocked resolves the AppContext once per foreground change.
+func (m *DefaultMatcher) prepareLocked(app context.AppContext) {
+	if app.Seq != 0 {
+		if m.ctxSeq == app.Seq {
+			return
+		}
+		m.ctxSeq = app.Seq
+	} else {
+		key := app.Key()
+		if key == m.ctxKey {
+			return
+		}
+		m.ctxKey = key
+	}
+	m.ctxProfile, m.ctxCategory = m.registry.Resolve(app)
+	m.ctxSensitive = isSensitiveContext(app)
+}
+
+func resultFor(a ActionInfo, confidence Confidence, profileID, profileName string, app context.AppContext) MatchResult {
+	appName := profileName
+	if appName == "" {
+		appName = app.DisplayName()
+	}
+	return MatchResult{
+		Action:      a,
+		Confidence:  confidence,
+		ProfileID:   profileID,
+		ProfileName: profileName,
+		AppName:     appName,
 	}
 }
 
 // MatchAction returns an ActionInfo if the combo corresponds to a known shortcut.
-func (m *DefaultMatcher) MatchAction(appContext string, mods hook.Modifiers, keyName string) (ActionInfo, bool) {
+func (m *DefaultMatcher) MatchAction(app context.AppContext, mods hook.Modifiers, keyName string) MatchResult {
 	normKey := NormalizeKey(keyName)
 	if normKey == "" {
-		return ActionInfo{}, false
+		return MatchResult{}
 	}
+	combo := canonicalCombo(mods, keyName)
 
-	key := comboKey{mods: mods, key: normKey}
-
-	// 1. Check app-specific overrides if appContext matches known app category
-	if appContext != "" {
-		category := matchAppCategory(appContext)
-		if category != "" {
-			if appMap, ok := m.appShortcuts[category]; ok {
-				if action, found := appMap[key]; found {
-					return action, true
-				}
-			}
-		}
+	m.mu.Lock()
+	m.prepareLocked(app)
+	profile := m.ctxProfile
+	category := m.ctxCategory
+	if a, ok := m.overrides.lookup(app, profile, category, combo); ok {
+		res := resultFor(a, ConfidenceUser, profileMetaID(profile), profileMetaName(profile), app)
+		m.mu.Unlock()
+		return res
 	}
+	a, confidence, profileID, profileName := m.registry.Lookup(profile, category, combo)
+	m.mu.Unlock()
 
-	// 2. Check universal / default dictionary
-	if action, found := m.shortcuts[key]; found {
-		return action, true
+	return resultFor(a, confidence, profileID, profileName, app)
+}
+
+// MatchUniversal resolves a chord using only global user overrides and the
+// universal dictionary. It deliberately bypasses the AppContext cache so it can
+// coexist with IsSensitive(realContext) without invalidating privacy state.
+func (m *DefaultMatcher) MatchUniversal(mods hook.Modifiers, keyName string) MatchResult {
+	normKey := NormalizeKey(keyName)
+	if normKey == "" {
+		return MatchResult{}
 	}
+	combo := canonicalCombo(mods, keyName)
 
-	return ActionInfo{}, false
+	m.mu.Lock()
+	if a, ok := m.overrides.lookupApp("", combo); ok {
+		m.mu.Unlock()
+		return resultFor(a, ConfidenceUser, "", "", context.AppContext{})
+	}
+	a, confidence, _, _ := m.registry.Lookup(nil, context.CategoryUnknown, combo)
+	m.mu.Unlock()
+
+	return resultFor(a, confidence, "", "", context.AppContext{})
+}
+
+func profileMetaID(p *Profile) string {
+	if p == nil {
+		return ""
+	}
+	return p.ID
+}
+
+func profileMetaName(p *Profile) string {
+	if p == nil {
+		return ""
+	}
+	return p.Name
+}
+
+// MatchSequence interprets a two-chord shortcut. The engine enforces the time
+// window; this method only resolves the data.
+func (m *DefaultMatcher) MatchSequence(
+	app context.AppContext,
+	firstMods hook.Modifiers, firstKey string,
+	secondMods hook.Modifiers, secondKey string,
+) (MatchResult, bool) {
+	first := canonicalCombo(firstMods, firstKey)
+	second := canonicalCombo(secondMods, secondKey)
+	if first.key == "" || second.key == "" {
+		return MatchResult{}, false
+	}
+	seq := sequenceKey{first: first, second: second}
+
+	m.mu.Lock()
+	m.prepareLocked(app)
+	profile := m.ctxProfile
+	category := m.ctxCategory
+	a, confidence, profileID, profileName := m.registry.LookupSequence(profile, category, seq)
+	m.mu.Unlock()
+	if a.Title == "" {
+		return MatchResult{}, false
+	}
+	res := resultFor(a, confidence, profileID, profileName, app)
+	res.IsSequence = true
+	return res, true
 }
 
 // sensitiveContextKeywords contains substrings indicative of credentials, logins, or finance.
@@ -289,6 +335,21 @@ var sensitiveContextKeywords = []string{
 	"user account control", "windows security", "credential manager", "pin entry", "sudo password",
 }
 
+// isSensitiveContext scans window/process metadata. It runs only when the
+// foreground app changes, never on every keystroke.
+func isSensitiveContext(app context.AppContext) bool {
+	if app.Title == "" && app.Exe == "" && app.AppName == "" {
+		return false
+	}
+	text := strings.ToLower(app.Title + "\x00" + app.Exe + "\x00" + app.AppName)
+	for _, kw := range sensitiveContextKeywords {
+		if strings.Contains(text, kw) {
+			return true
+		}
+	}
+	return false
+}
+
 // sensitiveKeyTriggers contains trigger sequences in typed history.
 var sensitiveKeyTriggers = []string{
 	"password", "passwd", "pwd:", "pwd ", "pin:", "secret", "token",
@@ -297,34 +358,29 @@ var sensitiveKeyTriggers = []string{
 
 // IsSensitive returns true if current window title / context indicates
 // password/credentials/banking or if the user has typed sensitive patterns.
-func (m *DefaultMatcher) IsSensitive(appContext string, keyName string) bool {
-	// 1. Check appContext (window title / process name)
-	appLower := strings.ToLower(appContext)
-	for _, kw := range sensitiveContextKeywords {
-		if strings.Contains(appLower, kw) {
-			return true
-		}
+func (m *DefaultMatcher) IsSensitive(app context.AppContext, keyName string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.prepareLocked(app)
+	if m.ctxSensitive {
+		return true
 	}
 
-	// 2. Check keyName itself
+	// Direct sensitive keyName.
 	keyLower := strings.ToLower(keyName)
 	if keyLower == "password" || keyLower == "secret" || keyLower == "token" ||
 		keyLower == "credential" || keyLower == "pin" || strings.Contains(keyLower, "password") {
 		return true
 	}
 
-	// 3. Keystroke pattern tracking
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
+	// Keystroke pattern tracking.
 	now := time.Now()
-	// Reset stale history after 5 seconds of inactivity
 	if now.Sub(m.lastInputTime) > 5*time.Second {
 		m.history = m.history[:0]
 	}
 	m.lastInputTime = now
 
-	// If currently within a sensitive stream (e.g. following a trigger word)
 	if m.sensitiveLeft > 0 {
 		m.sensitiveLeft--
 		if norm := NormalizeKey(keyName); norm == "ENTER" || norm == "ESC" {
@@ -334,21 +390,18 @@ func (m *DefaultMatcher) IsSensitive(appContext string, keyName string) bool {
 		return true
 	}
 
-	// Handle Backspace
-	if norm := NormalizeKey(keyName); norm == "BACKSPACE" {
+	norm := NormalizeKey(keyName)
+	if norm == "BACKSPACE" {
 		if len(m.history) > 0 {
 			m.history = m.history[:len(m.history)-1]
 		}
 		return false
 	}
-
-	// Handle Enter / Esc
-	if norm := NormalizeKey(keyName); norm == "ENTER" || norm == "ESC" {
+	if norm == "ENTER" || norm == "ESC" {
 		m.history = m.history[:0]
 		return false
 	}
 
-	// Record printable keystroke
 	runes := []rune(keyName)
 	if len(runes) == 1 {
 		r := unicode.ToLower(runes[0])
@@ -356,22 +409,18 @@ func (m *DefaultMatcher) IsSensitive(appContext string, keyName string) bool {
 		if len(m.history) > 64 {
 			m.history = m.history[len(m.history)-64:]
 		}
-
 		histStr := string(m.history)
 		for _, trig := range sensitiveKeyTriggers {
 			if strings.HasSuffix(histStr, trig) || strings.Contains(histStr, trig) {
-				m.sensitiveLeft = 32 // Shield the next 32 keystrokes
+				m.sensitiveLeft = 32
 				return true
 			}
 		}
-
-		// Detect consecutive digits (like credit cards / SSN / PINs)
 		if hasConsecutiveDigits(histStr, 8) {
 			m.sensitiveLeft = 16
 			return true
 		}
 	}
-
 	return false
 }
 
@@ -381,6 +430,13 @@ func (m *DefaultMatcher) Reset() {
 	defer m.mu.Unlock()
 	m.history = m.history[:0]
 	m.sensitiveLeft = 0
+	m.lastInputTime = time.Time{}
+}
+
+// AllActionTitles returns every registered action title for localization
+// completeness checks.
+func (m *DefaultMatcher) AllActionTitles() []string {
+	return m.registry.AllActionTitles()
 }
 
 func hasConsecutiveDigits(s string, minDigits int) bool {

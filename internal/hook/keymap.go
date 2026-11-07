@@ -7,38 +7,38 @@ import (
 
 // Virtual Key Code constants for Windows and cross-platform compatibility.
 const (
-	VK_LBUTTON    = 0x01
-	VK_RBUTTON    = 0x02
-	VK_CANCEL     = 0x03
-	VK_MBUTTON    = 0x04
-	VK_XBUTTON1   = 0x05
-	VK_XBUTTON2   = 0x06
-	VK_BACK       = 0x08 // Backspace
-	VK_TAB        = 0x09 // Tab
-	VK_CLEAR      = 0x0C
-	VK_RETURN     = 0x0D // Enter
-	VK_SHIFT      = 0x10
-	VK_CONTROL    = 0x11
-	VK_MENU       = 0x12 // Alt
-	VK_PAUSE      = 0x13
-	VK_CAPITAL    = 0x14 // Caps Lock
-	VK_ESCAPE     = 0x1B // Esc
-	VK_SPACE      = 0x20 // Space
-	VK_PRIOR      = 0x21 // Page Up
-	VK_NEXT       = 0x22 // Page Down
-	VK_END        = 0x23 // End
-	VK_HOME       = 0x24 // Home
-	VK_LEFT       = 0x25 // Left Arrow
-	VK_UP         = 0x26 // Up Arrow
-	VK_RIGHT      = 0x27 // Right Arrow
-	VK_DOWN       = 0x28 // Down Arrow
-	VK_SELECT     = 0x29
-	VK_PRINT      = 0x2A
-	VK_EXECUTE    = 0x2B
-	VK_SNAPSHOT   = 0x2C // Print Screen
-	VK_INSERT     = 0x2D // Insert
-	VK_DELETE     = 0x2E // Delete
-	VK_HELP       = 0x2F
+	VK_LBUTTON  = 0x01
+	VK_RBUTTON  = 0x02
+	VK_CANCEL   = 0x03
+	VK_MBUTTON  = 0x04
+	VK_XBUTTON1 = 0x05
+	VK_XBUTTON2 = 0x06
+	VK_BACK     = 0x08 // Backspace
+	VK_TAB      = 0x09 // Tab
+	VK_CLEAR    = 0x0C
+	VK_RETURN   = 0x0D // Enter
+	VK_SHIFT    = 0x10
+	VK_CONTROL  = 0x11
+	VK_MENU     = 0x12 // Alt
+	VK_PAUSE    = 0x13
+	VK_CAPITAL  = 0x14 // Caps Lock
+	VK_ESCAPE   = 0x1B // Esc
+	VK_SPACE    = 0x20 // Space
+	VK_PRIOR    = 0x21 // Page Up
+	VK_NEXT     = 0x22 // Page Down
+	VK_END      = 0x23 // End
+	VK_HOME     = 0x24 // Home
+	VK_LEFT     = 0x25 // Left Arrow
+	VK_UP       = 0x26 // Up Arrow
+	VK_RIGHT    = 0x27 // Right Arrow
+	VK_DOWN     = 0x28 // Down Arrow
+	VK_SELECT   = 0x29
+	VK_PRINT    = 0x2A
+	VK_EXECUTE  = 0x2B
+	VK_SNAPSHOT = 0x2C // Print Screen
+	VK_INSERT   = 0x2D // Insert
+	VK_DELETE   = 0x2E // Delete
+	VK_HELP     = 0x2F
 
 	// Standard alphanumeric keys
 	VK_0 = 0x30
@@ -80,9 +80,9 @@ const (
 	VK_Z = 0x5A
 
 	// System / OS keys
-	VK_LWIN = 0x5B // Left Windows / Super
-	VK_RWIN = 0x5C // Right Windows / Super
-	VK_APPS = 0x5D // Applications / Context menu
+	VK_LWIN  = 0x5B // Left Windows / Super
+	VK_RWIN  = 0x5C // Right Windows / Super
+	VK_APPS  = 0x5D // Applications / Context menu
 	VK_SLEEP = 0x5F
 
 	// Numpad keys
@@ -141,24 +141,24 @@ const (
 	VK_RMENU    = 0xA5
 
 	// Media and browser keys
-	VK_BROWSER_BACK      = 0xA6
-	VK_BROWSER_FORWARD   = 0xA7
-	VK_BROWSER_REFRESH   = 0xA8
-	VK_BROWSER_STOP      = 0xA9
-	VK_BROWSER_SEARCH    = 0xAA
-	VK_BROWSER_FAVORITES = 0xAB
-	VK_BROWSER_HOME      = 0xAC
-	VK_VOLUME_MUTE       = 0xAD
-	VK_VOLUME_DOWN       = 0xAE
-	VK_VOLUME_UP         = 0xAF
-	VK_MEDIA_NEXT_TRACK  = 0xB0
-	VK_MEDIA_PREV_TRACK  = 0xB1
-	VK_MEDIA_STOP        = 0xB2
-	VK_MEDIA_PLAY_PAUSE  = 0xB3
-	VK_LAUNCH_MAIL       = 0xB4
+	VK_BROWSER_BACK        = 0xA6
+	VK_BROWSER_FORWARD     = 0xA7
+	VK_BROWSER_REFRESH     = 0xA8
+	VK_BROWSER_STOP        = 0xA9
+	VK_BROWSER_SEARCH      = 0xAA
+	VK_BROWSER_FAVORITES   = 0xAB
+	VK_BROWSER_HOME        = 0xAC
+	VK_VOLUME_MUTE         = 0xAD
+	VK_VOLUME_DOWN         = 0xAE
+	VK_VOLUME_UP           = 0xAF
+	VK_MEDIA_NEXT_TRACK    = 0xB0
+	VK_MEDIA_PREV_TRACK    = 0xB1
+	VK_MEDIA_STOP          = 0xB2
+	VK_MEDIA_PLAY_PAUSE    = 0xB3
+	VK_LAUNCH_MAIL         = 0xB4
 	VK_LAUNCH_MEDIA_SELECT = 0xB5
-	VK_LAUNCH_APP1       = 0xB6
-	VK_LAUNCH_APP2       = 0xB7
+	VK_LAUNCH_APP1         = 0xB6
+	VK_LAUNCH_APP2         = 0xB7
 
 	// OEM Punctuation keys
 	VK_OEM_1      = 0xBA // ; :
@@ -217,17 +217,17 @@ var vkShiftMap = map[uint32]string{
 	VK_9: "(",
 	VK_0: ")",
 
-	VK_OEM_3:     "~",
-	VK_OEM_MINUS: "_",
-	VK_OEM_PLUS:  "+",
-	VK_OEM_4:     "{",
-	VK_OEM_6:     "}",
-	VK_OEM_5:     "|",
-	VK_OEM_1:     ":",
-	VK_OEM_7:     "\"",
-	VK_OEM_COMMA: "<",
+	VK_OEM_3:      "~",
+	VK_OEM_MINUS:  "_",
+	VK_OEM_PLUS:   "+",
+	VK_OEM_4:      "{",
+	VK_OEM_6:      "}",
+	VK_OEM_5:      "|",
+	VK_OEM_1:      ":",
+	VK_OEM_7:      "\"",
+	VK_OEM_COMMA:  "<",
 	VK_OEM_PERIOD: ">",
-	VK_OEM_2:     "?",
+	VK_OEM_2:      "?",
 }
 
 // superKeyName returns "⌘" on macOS and "Win" on other systems.
@@ -363,18 +363,18 @@ var baseKeyNames = map[uint32]string{
 	VK_Z: "Z",
 
 	// Punctuation (Base)
-	VK_OEM_3:     "`",
-	VK_OEM_MINUS: "-",
-	VK_OEM_PLUS:  "=",
-	VK_OEM_4:     "[",
-	VK_OEM_6:     "]",
-	VK_OEM_5:     "\\",
-	VK_OEM_1:     ";",
-	VK_OEM_7:     "'",
-	VK_OEM_COMMA: ",",
+	VK_OEM_3:      "`",
+	VK_OEM_MINUS:  "-",
+	VK_OEM_PLUS:   "=",
+	VK_OEM_4:      "[",
+	VK_OEM_6:      "]",
+	VK_OEM_5:      "\\",
+	VK_OEM_1:      ";",
+	VK_OEM_7:      "'",
+	VK_OEM_COMMA:  ",",
 	VK_OEM_PERIOD: ".",
-	VK_OEM_2:     "/",
-	VK_OEM_102:   "\\",
+	VK_OEM_2:      "/",
+	VK_OEM_102:    "\\",
 
 	// Media & Browser
 	VK_VOLUME_MUTE:      "VolMute",
