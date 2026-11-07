@@ -21,9 +21,15 @@
 
 ## See it in motion
 
-<a href="assets/promo/cue-promo.mp4"><img src="assets/promo/hero-ctrl-c.png" alt="Cue rendering Ctrl+C as the word Copy over VS Code" width="100%" /></a>
+<div align="center">
 
-**[Watch the 50-second film &rarr;](assets/promo/cue-promo.mp4)** &nbsp;·&nbsp; five themed beats, one word typed across four palettes, every mouse gesture, and all nineteen presets in a row.
+<a href="assets/promo/cue-promo.mp4"><img src="assets/promo/cue-promo.gif" width="720" alt="Cue spelling out Ctrl+C as Copy, stacking a ×3 repeat badge, showing every mouse button, and cycling all nineteen themes" /></a>
+
+**[Watch the full 50-second film &rarr;](assets/promo/cue-promo.mp4)**
+
+</div>
+
+Five themed beats, one word typed across four palettes, every mouse gesture, and all nineteen presets in a row.
 
 | Two-stage sequences | Repeats count themselves | Left, right and wheel |
 |:---:|:---:|:---:|

@@ -21,9 +21,15 @@
 
 ## 看看它动起来
 
-<a href="assets/promo/cue-promo.mp4"><img src="assets/promo/hero-ctrl-c.png" alt="Cue 在 VS Code 上把 Ctrl+C 显示成「复制」" width="100%" /></a>
+<div align="center">
 
-**[观看 50 秒宣传片 &rarr;](assets/promo/cue-promo.mp4)** &nbsp;·&nbsp; 五段主题节拍、同一个单词在四套配色里重敲一遍、全套鼠标手势，以及十九套预设依次掠过。
+<a href="assets/promo/cue-promo.mp4"><img src="assets/promo/cue-promo.gif" width="720" alt="Cue 把 Ctrl+C 显示成「复制」、叠出 ×3 重复徽章、演示每个鼠标按键，并依次掠过十九套主题" /></a>
+
+**[观看完整 50 秒宣传片 &rarr;](assets/promo/cue-promo.mp4)**
+
+</div>
+
+五段主题节拍、同一个单词在四套配色里重敲一遍、全套鼠标手势，以及十九套预设依次掠过。
 
 | 双段序列 | 重复自动计数 | 左键 · 右键 · 滚轮 |
 |:---:|:---:|:---:|
