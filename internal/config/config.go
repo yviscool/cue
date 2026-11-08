@@ -187,7 +187,7 @@ type AppConfig struct {
 
 	// Jobsian Enhanced Extensions (Optional enhancements)
 	TactileAudio    bool             `json:"tactileAudio"`    // Micro-acoustics ON/OFF
-	AudioProfile    string           `json:"audioProfile"`    // "auto", "thock", "click", "scissor", "glass", "typewriter"
+	AudioProfile    string           `json:"audioProfile"`    // "auto", "thock", "click", "scissor", "glass", "typewriter", "hinoki", "pebble", "paper", "felt", "droplet", "crystal", "chip", "shutter"
 	AudioVolume     float64          `json:"audioVolume"`     // master keystroke volume, 1.0 = unity gain
 	SemanticSub     bool             `json:"semanticSub"`     // Semantic Action subtitles ON/OFF
 	SemanticContext bool             `json:"semanticContext"` // Context-aware shortcut interpretation

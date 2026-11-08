@@ -371,6 +371,14 @@ func TestSoundProfiles(t *testing.T) {
 		acoustic.ProfileScissor,
 		acoustic.ProfileGlass,
 		acoustic.ProfileTypewriter,
+		acoustic.ProfileHinoki,
+		acoustic.ProfilePebble,
+		acoustic.ProfilePaper,
+		acoustic.ProfileFelt,
+		acoustic.ProfileDroplet,
+		acoustic.ProfileCrystal,
+		acoustic.ProfileChip,
+		acoustic.ProfileShutter,
 	}
 
 	for _, prof := range profiles {
@@ -390,6 +398,14 @@ func TestSoundProfiles(t *testing.T) {
 		acoustic.ProfileScissor,
 		acoustic.ProfileGlass,
 		acoustic.ProfileTypewriter,
+		acoustic.ProfileHinoki,
+		acoustic.ProfilePebble,
+		acoustic.ProfilePaper,
+		acoustic.ProfileFelt,
+		acoustic.ProfileDroplet,
+		acoustic.ProfileCrystal,
+		acoustic.ProfileChip,
+		acoustic.ProfileShutter,
 	}
 	for _, prof := range concreteProfiles {
 		samplesMod := acoustic.SynthesizeProfileStereoSamples(prof, acoustic.SoundThock, 0.0, 1.0)

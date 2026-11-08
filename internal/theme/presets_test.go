@@ -25,6 +25,7 @@ func TestAllThemesCompleteness(t *testing.T) {
 		"Swiss Typography 1957",
 		"Kyoto Kintsugi",
 		"Blueprint Cyanotype",
+		"Leica M",
 	}
 
 	if len(AllThemes) < len(expectedThemes) {

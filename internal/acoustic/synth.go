@@ -85,9 +85,21 @@ const (
 	ProfileScissor    SoundProfile = "scissor"
 	ProfileGlass      SoundProfile = "glass"
 	ProfileTypewriter SoundProfile = "typewriter"
+
+	// Material family: wood, stone, paper, felt, water, crystal, silicon and
+	// a camera shutter. They extend the mechanical archetypes above rather
+	// than replacing them.
+	ProfileHinoki  SoundProfile = "hinoki"
+	ProfilePebble  SoundProfile = "pebble"
+	ProfilePaper   SoundProfile = "paper"
+	ProfileFelt    SoundProfile = "felt"
+	ProfileDroplet SoundProfile = "droplet"
+	ProfileCrystal SoundProfile = "crystal"
+	ProfileChip    SoundProfile = "chip"
+	ProfileShutter SoundProfile = "shutter"
 )
 
-const numProfiles = 5
+const numProfiles = 13
 
 var soundProfiles = [numProfiles]SoundProfile{
 	ProfileThock,
@@ -95,6 +107,14 @@ var soundProfiles = [numProfiles]SoundProfile{
 	ProfileScissor,
 	ProfileGlass,
 	ProfileTypewriter,
+	ProfileHinoki,
+	ProfilePebble,
+	ProfilePaper,
+	ProfileFelt,
+	ProfileDroplet,
+	ProfileCrystal,
+	ProfileChip,
+	ProfileShutter,
 }
 
 func profileToIndex(p SoundProfile) int {
@@ -109,6 +129,22 @@ func profileToIndex(p SoundProfile) int {
 		return 3
 	case ProfileTypewriter:
 		return 4
+	case ProfileHinoki:
+		return 5
+	case ProfilePebble:
+		return 6
+	case ProfilePaper:
+		return 7
+	case ProfileFelt:
+		return 8
+	case ProfileDroplet:
+		return 9
+	case ProfileCrystal:
+		return 10
+	case ProfileChip:
+		return 11
+	case ProfileShutter:
+		return 12
 	default:
 		return 0
 	}
@@ -139,7 +175,7 @@ func NewPlayer() *Player {
 	}
 	p.engine.SetVolume(p.volume)
 
-	// Pre-render the 5 (profiles) x 2 (types) x 5 (zones) x 3 (variations) stereo matrix
+	// Pre-render the numProfiles x 2 (types) x 5 (zones) x 3 (variations) stereo matrix
 	// for zero-allocation, 0ms latency polyphonic audio playback at keystroke time.
 	for pIdx, prof := range soundProfiles {
 		for sIdx, st := range []SoundType{SoundThock, SoundClick} {
@@ -176,7 +212,7 @@ func (p *Player) IsEnabled() bool {
 
 // SetVolume sets the master keystroke volume in [0, 1]. The gain is applied at
 // mix time rather than baked into the buffers, so moving the slider is instant
-// and never re-synthesizes the 5x2x5x3 sample matrix.
+// and never re-synthesizes the numProfiles x 2 x 5 x 3 sample matrix.
 func (p *Player) SetVolume(volume float64) {
 	if volume < 0 {
 		volume = 0
@@ -419,6 +455,54 @@ func SynthesizeProfileStereoSamples(prof SoundProfile, st SoundType, pan float64
 			raw = synthesizeTypewriterModWithPitch(pitchFactor)
 		} else {
 			raw = synthesizeTypewriterKeyWithPitch(pitchFactor)
+		}
+	case ProfileHinoki:
+		if st == SoundThock {
+			raw = synthesizeHinokiModWithPitch(pitchFactor)
+		} else {
+			raw = synthesizeHinokiKeyWithPitch(pitchFactor)
+		}
+	case ProfilePebble:
+		if st == SoundThock {
+			raw = synthesizePebbleModWithPitch(pitchFactor)
+		} else {
+			raw = synthesizePebbleKeyWithPitch(pitchFactor)
+		}
+	case ProfilePaper:
+		if st == SoundThock {
+			raw = synthesizePaperModWithPitch(pitchFactor)
+		} else {
+			raw = synthesizePaperKeyWithPitch(pitchFactor)
+		}
+	case ProfileFelt:
+		if st == SoundThock {
+			raw = synthesizeFeltModWithPitch(pitchFactor)
+		} else {
+			raw = synthesizeFeltKeyWithPitch(pitchFactor)
+		}
+	case ProfileDroplet:
+		if st == SoundThock {
+			raw = synthesizeDropletModWithPitch(pitchFactor)
+		} else {
+			raw = synthesizeDropletKeyWithPitch(pitchFactor)
+		}
+	case ProfileCrystal:
+		if st == SoundThock {
+			raw = synthesizeCrystalModWithPitch(pitchFactor)
+		} else {
+			raw = synthesizeCrystalKeyWithPitch(pitchFactor)
+		}
+	case ProfileChip:
+		if st == SoundThock {
+			raw = synthesizeChipModWithPitch(pitchFactor)
+		} else {
+			raw = synthesizeChipKeyWithPitch(pitchFactor)
+		}
+	case ProfileShutter:
+		if st == SoundThock {
+			raw = synthesizeShutterModWithPitch(pitchFactor)
+		} else {
+			raw = synthesizeShutterKeyWithPitch(pitchFactor)
 		}
 	default:
 		raw = synthesizeThockWithPitch(pitchFactor)

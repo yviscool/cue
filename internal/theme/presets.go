@@ -110,7 +110,7 @@ func rgba(r, g, b, a uint8) ui.Color {
 	return ui.Color{R: r, G: g, B: b, A: a}
 }
 
-// 12 Master Themes
+// Curated keyboard themes
 var (
 	ThemeLiquidGlass = ThemeConfig{
 		Name:                  "Liquid Glass",
@@ -119,7 +119,7 @@ var (
 		DefaultStyle:          "glass",
 		TravelDepth:           0.0,
 		HeldPhysics:           HeldPulse,
-		AcousticProfile:       "glass",
+		AcousticProfile:       "droplet",
 		SpringBounce:          0.22,
 		SpringDurationScale:   1.0,
 		WindowBackground:      rgba(15, 23, 42, 140),
@@ -181,7 +181,7 @@ var (
 		DefaultStyle:          "minimal",
 		TravelDepth:           2.0,
 		HeldPhysics:           HeldSink,
-		AcousticProfile:       "thock",
+		AcousticProfile:       "pebble",
 		SpringBounce:          0.18,
 		SpringDurationScale:   0.95,
 		WindowBackground:      rgba(245, 245, 244, 240),
@@ -212,7 +212,7 @@ var (
 		DefaultStyle:          "neon",
 		TravelDepth:           0.0,
 		HeldPhysics:           HeldPulse,
-		AcousticProfile:       "click",
+		AcousticProfile:       "crystal",
 		SpringBounce:          0.28,
 		SpringDurationScale:   0.90,
 		WindowBackground:      rgba(10, 10, 20, 230),
@@ -249,7 +249,7 @@ var (
 		DefaultStyle:          "neon",
 		TravelDepth:           0.0,
 		HeldPhysics:           HeldPulse,
-		AcousticProfile:       "click",
+		AcousticProfile:       "droplet",
 		SpringBounce:          0.28,
 		SpringDurationScale:   0.90,
 		WindowBackground:      rgba(8, 12, 22, 235),
@@ -342,7 +342,7 @@ var (
 		DefaultStyle:          "minimal",
 		TravelDepth:           1.6,
 		HeldPhysics:           HeldSink,
-		AcousticProfile:       "click",
+		AcousticProfile:       "paper",
 		SpringBounce:          0.16,
 		SpringDurationScale:   0.90,
 		WindowBackground:      rgba(18, 18, 18, 200),
@@ -373,7 +373,7 @@ var (
 		DefaultStyle:          "outline",
 		TravelDepth:           0.0,
 		HeldPhysics:           HeldPulse,
-		AcousticProfile:       "click",
+		AcousticProfile:       "pebble",
 		SpringBounce:          0.14,
 		SpringDurationScale:   0.85,
 		WindowBackground:      rgba(0, 0, 0, 240),
@@ -404,7 +404,7 @@ var (
 		DefaultStyle:          "lowprofile",
 		TravelDepth:           2.2,
 		HeldPhysics:           HeldSink,
-		AcousticProfile:       "thock",
+		AcousticProfile:       "felt",
 		SpringBounce:          0.20,
 		SpringDurationScale:   1.0,
 		WindowBackground:      rgba(38, 20, 36, 230),
@@ -435,7 +435,7 @@ var (
 		DefaultStyle:          "retro",
 		TravelDepth:           2.8,
 		HeldPhysics:           HeldSink,
-		AcousticProfile:       "click",
+		AcousticProfile:       "chip",
 		SpringBounce:          0.24,
 		SpringDurationScale:   1.0,
 		WindowBackground:      rgba(6, 20, 12, 240),
@@ -497,7 +497,7 @@ var (
 		DefaultStyle:          "pbt",
 		TravelDepth:           3.2,
 		HeldPhysics:           HeldSink,
-		AcousticProfile:       "thock",
+		AcousticProfile:       "felt",
 		SpringBounce:          0.22,
 		SpringDurationScale:   1.05,
 		WindowBackground:      rgba(18, 20, 48, 235),
@@ -528,7 +528,7 @@ var (
 		DefaultStyle:          "laptop",
 		TravelDepth:           2.4,
 		HeldPhysics:           HeldSnappy,
-		AcousticProfile:       "scissor",
+		AcousticProfile:       "hinoki",
 		SpringBounce:          0.18,
 		SpringDurationScale:   0.90,
 		WindowBackground:      rgba(20, 35, 60, 235),
@@ -559,7 +559,7 @@ var (
 		DefaultStyle:          "minimal",
 		TravelDepth:           1.0,
 		HeldPhysics:           HeldSnappy,
-		AcousticProfile:       "click",
+		AcousticProfile:       "chip",
 		SpringBounce:          0.14,
 		SpringDurationScale:   0.80,
 		WindowBackground:      rgba(228, 231, 236, 240),
@@ -621,7 +621,7 @@ var (
 		DefaultStyle:          "minimal",
 		TravelDepth:           1.4,
 		HeldPhysics:           HeldSnappy,
-		AcousticProfile:       "click",
+		AcousticProfile:       "paper",
 		SpringBounce:          0.12,
 		SpringDurationScale:   0.85,
 		WindowBackground:      rgba(250, 250, 250, 245),
@@ -652,7 +652,7 @@ var (
 		DefaultStyle:          "pbt",
 		TravelDepth:           2.6,
 		HeldPhysics:           HeldSink,
-		AcousticProfile:       "thock",
+		AcousticProfile:       "hinoki",
 		SpringBounce:          0.18,
 		SpringDurationScale:   1.0,
 		WindowBackground:      rgba(26, 24, 22, 240),
@@ -683,7 +683,7 @@ var (
 		DefaultStyle:          "outline",
 		TravelDepth:           1.6,
 		HeldPhysics:           HeldSnappy,
-		AcousticProfile:       "click",
+		AcousticProfile:       "paper",
 		SpringBounce:          0.15,
 		SpringDurationScale:   0.88,
 		WindowBackground:      rgba(10, 30, 75, 240),
@@ -705,6 +705,37 @@ var (
 		StreakBadgeBackground: rgba(37, 99, 235, 240),
 		StreakBadgeTextColor:  rgba(255, 255, 255, 255),
 		MouseRippleColor:      rgba(147, 197, 253, 190),
+	}
+
+	ThemeLeicaM = ThemeConfig{
+		Name:                  "Leica M",
+		DisplayName:           "银黑徕卡 (Leica M)",
+		Description:           "银色镀铬顶盖与黑色皮革机身，快门落下的一刻被永远留住。",
+		DefaultStyle:          "laptop",
+		TravelDepth:           1.8,
+		HeldPhysics:           HeldSnappy,
+		AcousticProfile:       "shutter",
+		SpringBounce:          0.14,
+		SpringDurationScale:   0.85,
+		WindowBackground:      rgba(18, 18, 18, 235),
+		WindowCorner:          14,
+		KeyCapBackground:      rgba(196, 199, 201, 250),
+		KeyCapBorder:          rgba(238, 240, 242, 255),
+		KeyCapHeldBackground:  rgba(120, 124, 128, 255),
+		KeyCapHeldBorder:      rgba(255, 255, 255, 255),
+		KeyCapTextColor:       rgba(24, 24, 24, 255),
+		KeyCapFontSize:        19,
+		KeyCapRadius:          12.5,
+		KeyCapShadowSpread:    5,
+		ModCapBackground:      rgba(34, 32, 30, 255),
+		ModCapBorder:          rgba(70, 66, 62, 255),
+		ModCapTextColor:       rgba(230, 226, 220, 255),
+		SubtitleBackground:    rgba(20, 20, 20, 235),
+		SubtitleTextColor:     rgba(229, 231, 235, 255),
+		SubtitleFontSize:      12,
+		StreakBadgeBackground: rgba(200, 16, 46, 235),
+		StreakBadgeTextColor:  rgba(255, 255, 255, 255),
+		MouseRippleColor:      rgba(200, 16, 46, 170),
 	}
 )
 
@@ -728,6 +759,7 @@ var AllThemes = []ThemeConfig{
 	ThemeSwissTypography,
 	ThemeKyotoKintsugi,
 	ThemeBlueprintCyanotype,
+	ThemeLeicaM,
 }
 
 // ThemeByName retrieves a theme by name with fuzzy/case-insensitive matching.
@@ -799,6 +831,8 @@ func DefaultStyleForTheme(name string) string {
 		return "pbt"
 	case "blueprint cyanotype":
 		return "outline"
+	case "leica m":
+		return "laptop"
 	default:
 		return "lowprofile"
 	}
