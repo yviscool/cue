@@ -31,7 +31,7 @@
 
 - ⚡ **Pure Go ネイティブ設計 (Zero CGO)**：Windows Win32 および Direct3D 11 API に直接接続。単一の実行可能ファイル（< 12 MB）で動作し、外部 DLL や C ランタイムへの依存はありません。ミリ秒単位の超高速起動と極限の省メモリを実現。
 - 🎮 **Direct3D 11 GPU レンダリング**：60Hz / 120Hz / 144Hz+ の高リフレッシュレートをサポート。ティアリングのない透明オーバーレイが、クリックスルーで滑らかに動作します。
-- 🎨 **19 種類の厳選キーボードテーマ**：
+- 🎨 **20 種類の厳選キーボードテーマ**：
   - *Liquid Glass*（visionOS 風すりガラス擬態と微光屈折）
   - *MacBook Scissor*（Apple スペースグレイ調のアルミシザースイッチ）
   - *Dieter Rams 1960*（ブラウン社のインダストリアルデザインと温かいグレー＆オレンジ）
@@ -40,6 +40,7 @@
   - *Classic Mechanical*（PBT ダブルショットキーキャップ）
   - *IBM Model M 1984*（クラシックな座屈バネ式メカニカル）
   - *Sony Walkman 1979*（金属シルバーブルーとカセットデッキのアクリル）
+  - *Leica M*（クロームシルバーと黒革、二段式シャッター）
   - *Minimal Chalk*, *Obsidian OLED*, *Tokyo Blossom*, *Emerald Matrix*, *Sunset Horizon*, *Royal Velvet*, *Teenage OP-1*, *Amber Cathode 1977*, *Swiss Typography 1957*, *Kyoto Kintsugi*, *Blueprint Cyanotype*
 - 🖱️ **6 種類の専用マウステーマ (v1.1.0 新機能)**：
   - *Neon Green*、*Aurora Dual-Tone*、*Cyber Cyan*、*Obsidian Crimson*、*Deep Space Blue*、*Minimal White*
@@ -60,7 +61,7 @@
   - タイピング中の文字を自動で単語カプセルにまとめ、バックスペース入力時には末尾文字をリアルタイムにきれいに巻き戻して消去します。
 - 🔊 **打鍵サウンド＆空間音響 (v1.2.0)**：
   - 高速タイピングに対応した低遅延ポリフォニックミキシングエンジンを搭載。
-  - 5種類の打鍵音プロファイル：**Thock (メカニカル)**、**Click (クリッキー)**、**Scissor (パンタグラフ)**、**Glass (グラス)**、**Typewriter (タイプライター)**。テーマ連動または手動選択に対応。
+  - 13種類の打鍵音プロファイル。メカニカル系：**Thock**、**Click**、**Scissor**、**Glass**、**Typewriter**。マテリアル系：**Hinoki**、**Pebble**、**Paper**、**Felt**、**Droplet**、**Crystal**、**Chip**、**Shutter**。テーマ連動または手動選択に対応。
   - キーの水平位置に応じたステレオパンニングとピッチ変化をサポート。
 - 🎚️ **ライブ表示コントロール (v1.3.0 新機能)**：
   - キーキャップ表示とマウスオーバーレイそれぞれに独立した不透明度スライダー。カーソルリングをキーキャップより淡く表示できます。

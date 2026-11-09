@@ -108,7 +108,7 @@ func (f *film) accentColor() ui.Color {
 // single keystroke; the stage follows the same colour on a 700 ms dissolve.
 func (f *film) setTheme(name string) {
 	th := theme.ThemeByName(name)
-	th.SubtitleFontSize = float32(envInt("PROMO_SUB_FONT", 28))
+	th.SubtitleFontSize = float32(envInt("PROMO_SUB_FONT", 34))
 
 	f.vState.SetTheme(th)
 	f.cfg.ThemePreset = name
@@ -532,7 +532,7 @@ func promoConfig() config.AppConfig {
 	// overlay occupies a corner. A promo frame is watched at a fraction of that
 	// size, so the caps are drawn one step larger. Same knob a user turns with
 	// the text-size setting, not a mock-up.
-	cfg.Text.Size = envInt("PROMO_FONT", 62)
+	cfg.Text.Size = envInt("PROMO_FONT", 92)
 
 	cfg.Layout.ShowPressCount = true
 

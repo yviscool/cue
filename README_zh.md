@@ -23,13 +23,13 @@
 
 <div align="center">
 
-<a href="assets/promo/cue-promo.mp4"><img src="assets/promo/cue-promo.gif" width="720" alt="Cue 把 Ctrl+C 显示成「复制」、叠出 ×3 重复徽章、演示每个鼠标按键，并依次掠过十九套主题" /></a>
+<a href="assets/promo/cue-promo.mp4"><img src="assets/promo/cue-promo.gif" width="720" alt="Cue 把 Ctrl+C 显示成「复制」、叠出 ×3 重复徽章、演示每个鼠标按键，并依次掠过二十套主题" /></a>
 
 **[观看完整 50 秒宣传片 &rarr;](assets/promo/cue-promo.mp4)**
 
 </div>
 
-五段主题节拍、同一个单词在四套配色里重敲一遍、全套鼠标手势，以及十九套预设依次掠过。
+五段主题节拍、同一个单词在四套配色里重敲一遍、全套鼠标手势，以及二十套预设依次掠过。
 
 | 双段序列 | 重复自动计数 | 左键 · 右键 · 滚轮 |
 |:---:|:---:|:---:|
@@ -52,7 +52,7 @@
 
 - ⚡ **原生 Pure Go 直驱 (Zero CGO)**：纯 Go 语言直连 Windows Win32 / Direct3D 11 底层，单文件独立运行（< 12 MB），零依赖任何外部 C 运行时或 DLL。毫秒级极速冷启动，内存占用极微。
 - 🎮 **Direct3D 11 GPU 硬件渲染**：原生支持 60Hz / 120Hz / 144Hz+ 高刷新率，无撕裂、透明穿透，绝不抢占任何前台焦点。
-- 🎨 **19 款官方精选大师级键盘主题**：
+- 🎨 **20 款官方精选大师级键盘主题**：
   - *液态冰晶 (Liquid Glass)*：visionOS 毛玻璃拟态微光折射
   - *深空剪刀脚 (MacBook Scissor)*：苹果深空灰轻薄磨砂质感
   - *博朗经典 (Dieter Rams 1960)*：迪特·拉姆斯工业美学暖灰与经典安全橙
@@ -61,6 +61,7 @@
   - *经典机械 (Classic Mechanical)*：PBT 双色注塑质感
   - *IBM Model M 1984*：复古工业屈服弹簧轴
   - *索尼经典 (Sony Walkman 1979)*：金属银蓝与磁带仓亚克力质感
+  - *银黑徕卡 (Leica M)*：银色镀铬顶盖、黑色皮革机身与两段式快门
   - *极简粉笔 (Minimal Chalk)*、*黑曜石 OLED (Obsidian OLED)*、*东京樱花 (Tokyo Blossom)*、*翡翠矩阵 (Emerald Matrix)*、*落日地平线 (Sunset Horizon)*、*皇家天鹅绒 (Royal Velvet)*、*合成器先锋 (Teenage OP-1)*、*琥珀终端 (Amber Cathode 1977)*、*苏黎世平面 (Swiss Typography 1957)*、*京都金缮 (Kyoto Kintsugi)*、*工程蓝晒 (Blueprint Cyanotype)*
 - 🖱️ **6 套伴侣鼠标专属主题 (v1.1.0 升级)**：
   - *荧光极客绿 (Neon Green)*、*极光双色 (Aurora Dual-Tone)*、*赛博电青 (Cyber Cyan)*、*黑曜绯红 (Obsidian Crimson)*、*深空科技蓝 (Deep Space Blue)*、*纯粹极简白 (Minimal White)*
@@ -82,7 +83,7 @@
   - 自动将连续打字组合为单一单词胶囊；按下退格键时自动逆向吞噬尾部字符，展示镜像干净利落。
 - 🔊 **按键音效与空间声相 (v1.2.0 升级)**：
   - 内置多复音实时混音音频模块，支持高频击键平滑播放。
-  - 预设 5 种按键音效：**Thock (机械轴)**、**Click (段落轴)**、**Scissor (剪刀脚)**、**Glass (玻璃微音)** 与 **Typewriter (打字机)**，支持与视觉主题联动或手动指定。
+  - 13 种按键音效，分属两个家族。机械家族：**Thock**、**Click**、**Scissor**、**Glass**、**Typewriter**；材质家族：**柚木 (Hinoki)**、**卵石 (Pebble)**、**纸页 (Paper)**、**绒毡 (Felt)**、**雨滴 (Droplet)**、**晶体 (Crystal)**、**街机 (Chip)**、**快门 (Shutter)**，支持与视觉主题联动或手动指定。
   - 支持基于按键水平坐标的双耳立体声声相定位与微音高动态变化。
 - 🎚️ **实时呈现控制 (v1.3.0 升级)**：
   - 按键浮层与鼠标叠加层各自独立的透明度滑块，光标光圈可以比旁边的键帽更淡。

@@ -22,8 +22,8 @@ const (
 	headY      = 104    // act headline, centred
 	bigY       = 392    // act 1 wordmark, centred
 	subY       = 500    // act 1 second line, centred
-	footY      = 846    // act footnote, centred
-	dotsY      = 900    // theme strip, centred
+	footY      = 858    // act footnote, centred
+	dotsY      = 916    // theme strip, centred
 )
 
 // copySpec is everything the overlay prints in a given act.
@@ -85,7 +85,7 @@ func (f *film) renderCopy(c *ui.Context, now time.Time, cp copySpec, copyAt time
 		ui.Column(c).Absolute().Left(tagX).Top(tagY).Opacity(fade).Children(func() {
 			ui.Row(c).AlignItems(ui.Center).Gap(13).Children(func() {
 				ui.Box(c).Size(7, 7).Radius(3.5).Background(accent.Alpha(0.9))
-				ui.Text(c, cp.tag).FontSize(13).LetterSpacing(4.2).
+				ui.Text(c, cp.tag).FontSize(15).LetterSpacing(4.2).
 					TextColor(ui.Hex("#8FB6D8").Alpha(0.85)).SingleLine()
 			})
 			ui.Box(c).Size(46, 1.5).Background(accent.Alpha(0.5))
@@ -94,7 +94,7 @@ func (f *film) renderCopy(c *ui.Context, now time.Time, cp copySpec, copyAt time
 
 	if cp.head != "" {
 		centered(c, headY+rise, fade, func() {
-			ui.Text(c, cp.head).FontSize(42).Bold().LetterSpacing(1.5).
+			ui.Text(c, cp.head).FontSize(56).Bold().LetterSpacing(1.2).
 				TextColor(ui.Hex("#EAF6FF")).SingleLine()
 		})
 	}
@@ -115,7 +115,7 @@ func (f *film) renderCopy(c *ui.Context, now time.Time, cp copySpec, copyAt time
 
 	if cp.foot != "" {
 		centered(c, footY+rise, fade*0.9, func() {
-			ui.Text(c, cp.foot).FontSize(20).LetterSpacing(2.4).
+			ui.Text(c, cp.foot).FontSize(24).LetterSpacing(2.4).
 				TextColor(ui.Hex("#5C7695")).SingleLine()
 		})
 	}

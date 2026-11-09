@@ -65,6 +65,7 @@ Cue stores user settings in a human-readable JSON/YAML configuration file locate
 | `language` | `string` | `"zh-CN"` / `"en"` | Interface locale (`en`, `zh-CN`, `zh-TW`, `ja`). |
 | `themePreset` | `string` | `"Liquid Glass"` | Active keyboard theme preset. |
 | `tactileAudio` | `bool` | `true` | Toggle spatial binaural mechanical sound synthesis. |
+| `audioProfile` | `string` | `"auto"` | Keystroke sound: `auto`, `thock`, `click`, `scissor`, `glass`, `typewriter`, `hinoki`, `pebble`, `paper`, `felt`, `droplet`, `crystal`, `chip`, `shutter`. |
 | `semanticSub` | `bool` | `true` | Show human-readable action subtitles under keycaps. |
 | `semanticContext` | `bool` | `true` | Interpret shortcuts using the foreground application. When disabled, universal decoding still works but app profiles are skipped. Privacy shielding remains active. |
 | `showAppBadge` | `bool` | `true` | Include the recognized application name in action subtitles. |

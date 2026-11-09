@@ -23,13 +23,13 @@
 
 <div align="center">
 
-<a href="assets/promo/cue-promo.mp4"><img src="assets/promo/cue-promo.gif" width="720" alt="Cue spelling out Ctrl+C as Copy, stacking a ×3 repeat badge, showing every mouse button, and cycling all nineteen themes" /></a>
+<a href="assets/promo/cue-promo.mp4"><img src="assets/promo/cue-promo.gif" width="720" alt="Cue spelling out Ctrl+C as Copy, stacking a ×3 repeat badge, showing every mouse button, and cycling all twenty themes" /></a>
 
 **[Watch the full 50-second film &rarr;](assets/promo/cue-promo.mp4)**
 
 </div>
 
-Five themed beats, one word typed across four palettes, every mouse gesture, and all nineteen presets in a row.
+Five themed beats, one word typed across four palettes, every mouse gesture, and all twenty presets in a row.
 
 | Two-stage sequences | Repeats count themselves | Left, right and wheel |
 |:---:|:---:|:---:|
@@ -50,7 +50,7 @@ Engineered for tech speakers, educators, live streamers, and screencasters, Cue 
 
 - ⚡ **Pure Go Runtime (Zero CGO)**: Standalone single-binary distribution (< 12 MB) with zero external DLL dependencies. Sub-millisecond startup and microscopic memory footprint.
 - 🎮 **Direct3D 11 GPU Direct Rendering**: Hardware-pipelined drawing at full monitor refresh rates (60Hz / 120Hz / 144Hz+). Truly transparent, borderless overlay that passes clicks through seamlessly.
-- 🎨 **19 Curated Keyboard Themes**:
+- 🎨 **20 Curated Keyboard Themes**:
   - *Liquid Glass* (visionOS-inspired frosted refractive translucent glass)
   - *MacBook Scissor* (Apple Space Gray anodized aluminum aesthetic)
   - *Dieter Rams 1960* (Braun warm putty gray with iconic safety orange)
@@ -59,6 +59,7 @@ Engineered for tech speakers, educators, live streamers, and screencasters, Cue 
   - *Classic Mechanical* (PBT double-shot keycaps)
   - *IBM Model M 1984* (Industrial retro buckling spring)
   - *Sony Walkman 1979* (Brushed silver-blue metal with cassette-deck acrylic)
+  - *Leica M* (Chrome silver, black leather, and a two-stage shutter release)
   - *Minimal Chalk*, *Obsidian OLED*, *Tokyo Blossom*, *Emerald Matrix*, *Sunset Horizon*, *Royal Velvet*, *Teenage OP-1*, *Amber Cathode 1977*, *Swiss Typography 1957*, *Kyoto Kintsugi*, *Blueprint Cyanotype*
 - 🖱️ **6 Companion Mouse Themes (New in v1.1.0)**:
   - *Neon Green*, *Aurora Dual-Tone*, *Cyber Cyan*, *Obsidian Crimson*, *Deep Space Blue*, *Minimal White*
@@ -77,7 +78,7 @@ Engineered for tech speakers, educators, live streamers, and screencasters, Cue 
   - Seamlessly combines character strokes into readable words; pressing Backspace automatically trims trailing characters in real time.
 - 🔊 **Keystroke Audio & Spatial Panning (New in v1.2.0)**:
   - Low-latency polyphonic mixing engine for rapid keystroke playback.
-  - 5 sound profiles: *Thock* (mechanical), *Click* (tactile), *Scissor* (laptop), *Glass* (chime), and *Typewriter*, supporting automatic theme matching and manual selection.
+  - 13 sound profiles across two families. Mechanical: *Thock*, *Click*, *Scissor*, *Glass*, *Typewriter*. Material: *Hinoki*, *Pebble*, *Paper*, *Felt*, *Droplet*, *Crystal*, *Chip*, *Shutter* — each with automatic theme matching or manual selection.
   - Stereo panning based on physical key horizontal positions with micro-pitch dynamics.
 - 🎚️ **Live Presentation Controls (New in v1.3.0)**:
   - Independent opacity sliders for the keycap overlay and the mouse overlay, so the cursor ring can sit fainter than the keycaps next to it.

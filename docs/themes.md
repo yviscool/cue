@@ -4,7 +4,7 @@ Cue is crafted with obsessive attention to visual design, typography, and motion
 
 ---
 
-## 1. Master Keyboard Themes (19 Curated Presets)
+## 1. Master Keyboard Themes (20 Curated Presets)
 
 Each theme is engineered with a distinct visual palette, shadow depth, border refraction, and modifier badge hierarchy:
 
@@ -29,6 +29,7 @@ Each theme is engineered with a distinct visual palette, shadow depth, border re
 | **Swiss Typography 1957** | International Typographic Style: white ground, heavy black grotesk, Swiss red dot | `minimal` | Swiss Red (`#dc2626`) |
 | **Kyoto Kintsugi** | Coarse black ceramic with flowing gold lacquer seams | `pbt` | Kintsugi Gold (`#d9a02b`) |
 | **Blueprint Cyanotype** | Prussian blue ground with fine white drafting grids | `outline` | Drafting White (`#93c5fd`) |
+| **Leica M** | Chrome silver top plate, black leather body, and a two-stage shutter release | `laptop` | Leica Red (`#c8102e`) |
 
 ---
 

@@ -56,6 +56,7 @@ var themeNameKeys = map[string]string{
 	"swiss typography 1957": "theme_swiss_typography",
 	"kyoto kintsugi":        "theme_kyoto_kintsugi",
 	"blueprint cyanotype":   "theme_blueprint_cyanotype",
+	"leica m":               "theme_leica_m",
 }
 
 // themeDisplayName returns the localized display name for a preset theme.
@@ -884,6 +885,14 @@ func (sc *SettingsController) renderGeneralTab(
 					{"scissor", i18n.T("profile_scissor")},
 					{"glass", i18n.T("profile_glass")},
 					{"typewriter", i18n.T("profile_typewriter")},
+					{"hinoki", i18n.T("profile_hinoki")},
+					{"pebble", i18n.T("profile_pebble")},
+					{"paper", i18n.T("profile_paper")},
+					{"felt", i18n.T("profile_felt")},
+					{"droplet", i18n.T("profile_droplet")},
+					{"crystal", i18n.T("profile_crystal")},
+					{"chip", i18n.T("profile_chip")},
+					{"shutter", i18n.T("profile_shutter")},
 				}
 				curProf := cfg.AudioProfile
 				if curProf == "" {
@@ -921,28 +930,30 @@ func (sc *SettingsController) renderGeneralTab(
 						Padding(4).
 						Shadow(0, 10, 24, 0, ui.RGBA(0, 0, 0, 0.45))
 
-					for _, opt := range options {
-						itemOpt := opt
-						item := sel.Item(itemOpt.id).
-							Height(32).
-							PaddingX(10).
-							Gap(8).
-							Radius(6).
-							AlignItems(ui.Center)
+					ui.Scroll(c).MaxHeight(300).Children(func() {
+						for _, opt := range options {
+							itemOpt := opt
+							item := sel.Item(itemOpt.id).
+								Height(32).
+								PaddingX(10).
+								Gap(8).
+								Radius(6).
+								AlignItems(ui.Center)
 
-						if item.Highlighted() {
-							item.Background(p.press)
-						} else if itemOpt.id == curProf {
-							item.Background(p.hover)
-						}
-
-						item.Children(func() {
-							ui.Text(c, itemOpt.label).FontSize(12).TextColor(p.text).Grow(1)
-							if itemOpt.id == curProf {
-								ui.Text(c, "✓").FontSize(12).Bold().TextColor(p.accent)
+							if item.Highlighted() {
+								item.Background(p.press)
+							} else if itemOpt.id == curProf {
+								item.Background(p.hover)
 							}
-						})
-					}
+
+							item.Children(func() {
+								ui.Text(c, itemOpt.label).FontSize(12).TextColor(p.text).Grow(1)
+								if itemOpt.id == curProf {
+									ui.Text(c, "✓").FontSize(12).Bold().TextColor(p.accent)
+								}
+							})
+						}
+					})
 				})
 
 				if sel.Trigger.Changed() {
