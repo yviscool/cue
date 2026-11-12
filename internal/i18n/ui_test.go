@@ -18,6 +18,12 @@ var localeOrder = []Language{LangEnUS, LangZhCN, LangZhTW, LangJaJP}
 // dynamic keys would defeat the audit anyway.
 var keyCallPattern = regexp.MustCompile(`i18n\.T[F]?\("([A-Za-z0-9_.\-]+)"`)
 
+// indirectKeyPattern matches keys passed as literals to helpers that translate
+// them later, such as navTab("Mouse", "tab_mouse", ...). Auditing only direct
+// i18n.T calls misses this class of leak, which is how "tab_intelligence"
+// reached the sidebar as a raw identifier.
+var indirectKeyPattern = regexp.MustCompile(`navTab\("[^"]*",\s*"([A-Za-z0-9_.\-]+)"`)
+
 // TestLocaleFilesLoaded checks that every embedded message file parsed cleanly
 // and produced the same number of messages the raw JSON declares. A malformed
 // file would otherwise degrade silently to raw keys at runtime.
@@ -130,6 +136,11 @@ func TestUIKeyCallSitesAreTranslated(t *testing.T) {
 				seen[m[1]] = callSite{key: m[1], file: filepath.ToSlash(path)}
 			}
 		}
+		for _, m := range indirectKeyPattern.FindAllStringSubmatch(string(body), -1) {
+			if _, ok := seen[m[1]]; !ok {
+				seen[m[1]] = callSite{key: m[1], file: filepath.ToSlash(path)}
+			}
+		}
 		return nil
 	})
 	if err != nil {
@@ -149,7 +160,7 @@ func TestUIKeyCallSitesAreTranslated(t *testing.T) {
 		site := seen[key]
 		for _, lang := range localeOrder {
 			if text, ok := catalogue[lang][key]; !ok || strings.TrimSpace(text) == "" {
-				t.Errorf("%s: i18n.T(%q) has no %s translation", site.file, key, lang)
+				t.Errorf("%s: key %q has no %s translation", site.file, key, lang)
 			}
 		}
 	}

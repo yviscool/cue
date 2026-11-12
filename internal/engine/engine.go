@@ -8,6 +8,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/yviscool/cue/internal/context"
 	"github.com/yviscool/cue/internal/hook"
@@ -16,13 +17,40 @@ import (
 
 const (
 	defaultDecayInterval    = 50 * time.Millisecond
-	defaultStreakThreshold  = 1200 * time.Millisecond
 	defaultLingerShort      = 1800 * time.Millisecond
 	defaultLingerLong       = 2500 * time.Millisecond
 	defaultMouseClickLinger = 180 * time.Millisecond
 	defaultMouseBadgeLinger = 1200 * time.Millisecond
 	defaultMaxChords        = 5
 	defaultThemeName        = "Default"
+)
+
+// The five windows that decide when two inputs are one gesture. They are kept
+// together because tuning one in isolation is how you break another: a word
+// window longer than the streak window makes letters merge into a single press,
+// and a scroll window as long as the streak window lets a flick survive a pause
+// that should have ended it.
+const (
+	// wordGroupingWindow: how soon a typed character may follow the previous one
+	// and still join the same word chip.
+	wordGroupingWindow = 600 * time.Millisecond
+
+	// defaultStreakThreshold: how soon the same key may be pressed again and still
+	// read as a repeat of the same action rather than a new cue.
+	defaultStreakThreshold = 1200 * time.Millisecond
+
+	// sequenceWindow: how long the second chord of a two-chord shortcut may take.
+	// Ctrl+K then Ctrl+S is one intent only while the first chord is still fresh.
+	sequenceWindow = semantic.DefaultSequenceWindow
+
+	// doubleClickWindow: how far apart two clicks may be and still count as a
+	// double click. Matches the Windows default so the badge agrees with the OS.
+	doubleClickWindow = 400 * time.Millisecond
+
+	// scrollMergeWindow: how soon a wheel notch may follow the previous one and
+	// still belong to the same scroll gesture. Deliberately shorter than the
+	// streak window — a flick is one motion, two separate scrolls are two.
+	scrollMergeWindow = 250 * time.Millisecond
 )
 
 // Engine is the central input state machine and cadence decay engine.
@@ -49,6 +77,7 @@ type Engine struct {
 	dragThreshold    int
 	wordGrouping     bool
 	wordBreakPending bool
+	privacyMode      bool
 
 	// Current state
 	heldKeys        map[string]bool // normalized key names currently pressed
@@ -238,6 +267,16 @@ func WithWordGrouping(grouping bool) Option {
 	}
 }
 
+// WithPrivacyMode enables the privacy shield: keystrokes typed into password,
+// login, or banking windows are replaced by a single placeholder. Off by
+// default — masking is a strong claim about what the overlay may reveal, so it
+// is opt-in rather than something a new install silently does.
+func WithPrivacyMode(enabled bool) Option {
+	return func(e *Engine) {
+		e.privacyMode = enabled
+	}
+}
+
 // NewEngine creates and initializes a Engine instance.
 func NewEngine(opts ...Option) *Engine {
 	e := &Engine{
@@ -319,6 +358,16 @@ func (e *Engine) SetWordGrouping(grouping bool) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.wordGrouping = grouping
+	e.emitStateLocked()
+}
+
+// SetPrivacyMode turns the privacy shield on or off at runtime. Changing it
+// affects subsequent keystrokes only; cues already on screen keep whatever they
+// were showing, because rewriting history would be its own privacy leak.
+func (e *Engine) SetPrivacyMode(enabled bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.privacyMode = enabled
 	e.emitStateLocked()
 }
 
@@ -682,11 +731,10 @@ func (e *Engine) handleKeyDown(ev hook.InputEvent) {
 	// Word Grouping: Alphanumeric grouping
 	if e.wordGrouping {
 		if charStr, ok := isWordGroupingChar(ev.KeyName, ev.VKCode, mods); ok {
-			const wordThreshold = 600 * time.Millisecond
 			if len(e.chords) > 0 && isTextWordChord(e.chords[len(e.chords)-1]) && !e.wordBreakPending {
 				lastChord := &e.chords[len(e.chords)-1]
-				if now.Sub(lastChord.Timestamp) <= wordThreshold {
-					lastChord.Keys[0].Label += charStr
+				if now.Sub(lastChord.Timestamp) <= wordGroupingWindow {
+					lastChord.Keys[0].Label = appendWordRune(lastChord.Keys[0].Label, charStr)
 					lastChord.ExpiresAt = now.Add(e.lingerShort)
 					lastChord.Timestamp = now
 					lastChord.IsActive = true
@@ -700,9 +748,19 @@ func (e *Engine) handleKeyDown(ev hook.InputEvent) {
 					return
 				}
 			}
+			hadBreak := e.wordBreakPending
 			e.wordBreakPending = false
+			if hadBreak {
+				// The key that ended the previous word may never have reached the
+				// display — the smart filter drops spaces and plain punctuation —
+				// but it still ended the word. Clearing the repeat chain is what
+				// keeps an invisible key from leaving a visible trace: without it
+				// `x=x` collapses into a single `x ×2` cue.
+				e.lastChordKey = ""
+				e.lastChordMods = hook.ModNone
+			}
 			// Initial character or new word after break: push as new word chord without modifier badges
-			e.pushChordLocked(now, hook.ModNone, charStr, true)
+			e.pushChordLocked(now, hook.ModNone, charStr, true, ev.IsKeyRepeat)
 			return
 		} else {
 			// Non-alphanumeric character encountered (space, symbol, enter, punctuation, etc.)
@@ -745,11 +803,13 @@ func (e *Engine) handleKeyDown(ev hook.InputEvent) {
 		}
 	}
 
-	e.pushChordLocked(now, mods, ev.KeyName, true)
+	e.pushChordLocked(now, mods, ev.KeyName, true, ev.IsKeyRepeat)
 }
 
 // pushChordLocked constructs a new DisplayChord or increments streak for repetitive inputs.
-func (e *Engine) pushChordLocked(now time.Time, mods hook.Modifiers, keyName string, isHeld bool) {
+// isRepeat marks an OS auto-repeat event: the user pressed once and held, so the
+// repeat must keep the cue alive without pretending it was another press.
+func (e *Engine) pushChordLocked(now time.Time, mods hook.Modifiers, keyName string, isHeld, isRepeat bool) {
 	wpm := e.recordStrokeLocked(now)
 	velocity := velocityForWPM(wpm)
 	isFinisher := isFinisherKey(keyName)
@@ -757,7 +817,7 @@ func (e *Engine) pushChordLocked(now time.Time, mods hook.Modifiers, keyName str
 	// Privacy is evaluated once per keystroke: it feeds the sequence guard, the
 	// placeholder mask, and the matcher's typed-pattern history.
 	isPrivate := false
-	if e.matcher != nil {
+	if e.privacyMode && e.matcher != nil {
 		isPrivate = e.matcher.IsSensitive(e.appContext, keyName)
 	}
 
@@ -770,7 +830,7 @@ func (e *Engine) pushChordLocked(now time.Time, mods hook.Modifiers, keyName str
 	// before they reach this point, so a sequence ending in a plain key (VS
 	// Code's Ctrl+K S) cannot be collapsed yet.
 	if !isPrivate && e.semanticContext && e.matcher != nil && mods != hook.ModNone &&
-		!e.seqAt.IsZero() && now.Sub(e.seqAt) >= 0 && now.Sub(e.seqAt) <= semantic.DefaultSequenceWindow {
+		!e.seqAt.IsZero() && now.Sub(e.seqAt) >= 0 && now.Sub(e.seqAt) <= sequenceWindow {
 		if res, ok := e.matcher.MatchSequence(e.appContext, e.seqMods, e.seqKey, mods, keyName); ok {
 			keys := buildKeyCaps(e.seqMods, e.seqKey, true)
 			keys = append(keys, KeyCap{Label: "→", IsModifier: true})
@@ -813,13 +873,22 @@ func (e *Engine) pushChordLocked(now time.Time, mods hook.Modifiers, keyName str
 		}
 	}
 
-	// Streak check: identical to the most recent chord (same modifiers + same key) within threshold
+	// Streak check: identical to the most recent chord (same modifiers + same key) within threshold.
+	// Plain word characters never reach this point — the grouping branch above
+	// returns for them — so nothing here needs to be excluded from streaking.
+	// The guard that used to sit here (`!e.wordGrouping || mods != ModNone`)
+	// therefore excluded exactly the wrong keys: with word grouping on, every
+	// unmodified key lost its repeat count, so three Right presses or three
+	// Backspaces showed as three separate cues instead of one ×3.
 	// NOTE: Scroll wheel events are continuous fluid motions and must never accumulate streak badges.
+	// NOTE: Auto-repeat is the machine pressing the key, not the user. It refreshes
+	// the cue (so a held key stays lit) but never raises the count, otherwise a
+	// two-second hold on an arrow reads as ×60.
 	isScroll := strings.EqualFold(keyName, "Scroll Down") || strings.EqualFold(keyName, "Scroll Up")
-	if len(e.chords) > 0 && (!e.wordGrouping || mods != hook.ModNone) && e.lastChordMods == mods && strings.EqualFold(e.lastChordKey, keyName) {
+	if len(e.chords) > 0 && e.lastChordMods == mods && strings.EqualFold(e.lastChordKey, keyName) {
 		lastChord := &e.chords[len(e.chords)-1]
 		if now.Sub(lastChord.Timestamp) <= e.streakThreshold {
-			if !isScroll {
+			if !isScroll && !isRepeat {
 				lastChord.Streak++
 			}
 			lastChord.Velocity = velocity
@@ -906,6 +975,42 @@ func (e *Engine) pushChordLocked(now time.Time, mods hook.Modifiers, keyName str
 	e.playAcoustic(SoundClick, keyName)
 
 	e.emitStateLocked()
+}
+
+// pushScrollLocked folds a wheel gesture into a single cue. A direction change
+// starts a new cue, and so does a pause longer than scrollMergeWindow: the user
+// stopped scrolling, so the next flick is a separate motion. The count is the
+// accumulated distance rather than the number of events, because a trackpad
+// reports a dozen small deltas for the same motion a wheel reports in one.
+func (e *Engine) pushScrollLocked(now time.Time, mods hook.Modifiers, keyName string, delta int) {
+	notches := float32(delta) / 120
+	if notches < 0 {
+		notches = -notches
+	}
+	if notches < 0.05 {
+		notches = 0.05
+	}
+
+	if len(e.chords) > 0 && e.lastChordMods == mods && strings.EqualFold(e.lastChordKey, keyName) {
+		last := &e.chords[len(e.chords)-1]
+		if now.Sub(last.Timestamp) <= scrollMergeWindow {
+			last.ScrollAmount += notches
+			last.Timestamp = now
+			last.ExpiresAt = now.Add(e.lingerShort)
+			e.playAcoustic(SoundClick, keyName)
+			e.emitStateLocked()
+			return
+		}
+	}
+
+	// A new gesture: drop the repeat chain so the generic path appends a fresh cue
+	// instead of refreshing the previous one, then seed it with the first notch.
+	e.lastChordKey = ""
+	e.lastChordMods = hook.ModNone
+	e.pushChordLocked(now, mods, keyName, false, false)
+	if n := len(e.chords); n > 0 {
+		e.chords[n-1].ScrollAmount = notches
+	}
 }
 
 // buildKeyCaps renders the modifier prefix and primary key for a chord.
@@ -1043,7 +1148,7 @@ func (e *Engine) handleMouseEvent(ev hook.InputEvent) {
 		}
 
 		active = true
-		if !e.lastClickTime.IsZero() && now.Sub(e.lastClickTime) <= 400*time.Millisecond && e.lastClickButton == ev.Button {
+		if !e.lastClickTime.IsZero() && now.Sub(e.lastClickTime) <= doubleClickWindow && e.lastClickButton == ev.Button {
 			e.clickCount++
 		} else {
 			e.clickCount = 1
@@ -1080,7 +1185,7 @@ func (e *Engine) handleMouseEvent(ev hook.InputEvent) {
 					lastChord.Timestamp = now
 					lastChord.IsActive = true
 				} else {
-					e.pushChordLocked(now, mods, btnName, true)
+					e.pushChordLocked(now, mods, btnName, true, false)
 				}
 			}
 		}
@@ -1122,7 +1227,7 @@ func (e *Engine) handleMouseEvent(ev hook.InputEvent) {
 					allowed = true
 				}
 				if allowed {
-					e.pushChordLocked(now, mods, "Drag", true)
+					e.pushChordLocked(now, mods, "Drag", true, false)
 				}
 			}
 		}
@@ -1149,7 +1254,7 @@ func (e *Engine) handleMouseEvent(ev hook.InputEvent) {
 			allowed = true
 		}
 		if allowed {
-			e.pushChordLocked(now, mods, wheelKey, false)
+			e.pushScrollLocked(now, mods, wheelKey, ev.WheelDelta)
 		}
 	}
 
@@ -1387,10 +1492,21 @@ func (e *Engine) SetMatcher(m semantic.Matcher) {
 func (e *Engine) SetAppContext(ctx context.AppContext) {
 	e.mu.Lock()
 	changed := e.appContext.Key() != ctx.Key() || e.appContext.Seq != ctx.Seq
+	// Application identity is the executable (plus the resolved profile), not the
+	// window title: a browser retitling itself on every tab must not interrupt a
+	// run of keystrokes.
+	identityChanged := !strings.EqualFold(e.appContext.Exe, ctx.Exe) || e.appContext.AppID != ctx.AppID
 	e.appContext = ctx
 	// A foreground switch invalidates any pending sequence first chord.
 	if changed {
 		e.seqAt = time.Time{}
+	}
+	if identityChanged {
+		// Different application, different vocabulary: → means "forward" in a
+		// browser and "move the caret" in an editor. Two presses on either side of
+		// a switch are two cues, never one ×2.
+		e.lastChordKey = ""
+		e.lastChordMods = hook.ModNone
 	}
 	e.mu.Unlock()
 }
@@ -1742,6 +1858,24 @@ func isAbsorbableCharacter(chord DisplayChord) bool {
 	return len(runes) == 1
 }
 
+// maxWordRunes caps how long a single word chip can grow. Typing — or holding a
+// key and letting the OS repeat it — otherwise extends one label without bound,
+// and the HUD has no truncation, so a long run widens the card until it walks
+// off screen. 24 runes covers the longest everyday words with room to spare;
+// past that the word is finished and an ellipsis says so.
+const maxWordRunes = 24
+
+// appendWordRune adds one character to a word chip, sealing it at the cap.
+func appendWordRune(label, char string) string {
+	if strings.HasSuffix(label, "…") {
+		return label
+	}
+	if utf8.RuneCountInString(label) >= maxWordRunes {
+		return label + "…"
+	}
+	return label + char
+}
+
 // isWordGroupingChar checks if key is a single alphanumeric character (A-Z, a-z, 0-9).
 // Non-alphanumeric keys (including Space, Enter, symbols, punctuation) return false,
 // causing words to break and wrap into distinct chords as per user specification.
@@ -1815,8 +1949,10 @@ func isTextWordChord(chord DisplayChord) bool {
 	if isBackspaceKey(k.Label, 0) || isSpecialKey(k.Label, 0) {
 		return false
 	}
-	// Must consist only of letters and digits
-	for _, r := range k.Label {
+	// Must consist only of letters and digits. A word that hit the length cap
+	// carries a trailing ellipsis and is still the same word, so it keeps
+	// absorbing keys instead of starting a fresh chip.
+	for _, r := range strings.TrimSuffix(k.Label, "…") {
 		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9')) {
 			return false
 		}

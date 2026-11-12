@@ -50,10 +50,14 @@ func getKeyIcon(label string, isMod bool, cfg config.AppConfig) *ui.SVG {
 	norm := strings.ToLower(strings.TrimSpace(label))
 
 	// 1. Mouse Keys
+	// The bare words "left" and "right" are deliberately absent: they are arrow
+	// keys, and matching them here drew a mouse on every Left/Right press. Mouse
+	// events arrive as "Left Click" / "Right Click", so the qualified names are
+	// all this table needs.
 	switch norm {
-	case "left click", "mouse left", "left":
+	case "left click", "mouse left":
 		return iconKeyMouseLeft
-	case "right click", "mouse right", "right":
+	case "right click", "mouse right":
 		return iconKeyMouseRight
 	case "middle click", "mouse middle", "middle":
 		return iconKeyMouseMiddle

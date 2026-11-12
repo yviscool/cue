@@ -83,6 +83,28 @@ func TestPhysicalStyleNamesAreLocalized(t *testing.T) {
 	}
 }
 
+// TestPhysicalStyleShortNamesAreLocalized covers the compact labels in the
+// model gallery. They are passed to i18n through a map, so the generic UI audit
+// cannot see them; a missing key would surface as a raw identifier on a card.
+func TestPhysicalStyleShortNamesAreLocalized(t *testing.T) {
+	mgr := i18n.Instance()
+	previous := mgr.GetLanguage()
+	defer mgr.SetLanguage(previous)
+
+	ids := []string{"", "lowprofile", "minimal", "laptop", "pbt", "glass", "neon", "retro", "outline"}
+	mgr.SetLanguage(i18n.LangEnUS)
+	for _, id := range ids {
+		if got := physicalStyleShortName(id); got == "" || cjkRun.MatchString(got) {
+			t.Errorf("short style %q renders %q in en-US", id, got)
+		}
+	}
+
+	mgr.SetLanguage(i18n.LangZhCN)
+	if got := physicalStyleShortName("outline"); got != "极简线框" {
+		t.Errorf("short style outline in zh-CN: got %q", got)
+	}
+}
+
 // TestTravelDepthLabelIsLocalized checks both branches: the kinetic pulse label
 // and the millimetre readout.
 func TestTravelDepthLabelIsLocalized(t *testing.T) {

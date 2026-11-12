@@ -333,6 +333,11 @@ var sensitiveContextKeywords = []string{
 
 	// OS security prompts
 	"user account control", "windows security", "credential manager", "pin entry", "sudo password",
+
+	// Localized window titles. Windows applications translate their titles, so a
+	// Chinese login page says "登录" and never contains the English word: without
+	// these the shield silently never armed for anyone running a Chinese UI.
+	"登录", "密码", "验证码", "银行", "支付", "无痕", "网银", "密钥",
 }
 
 // isSensitiveContext scans window/process metadata. It runs only when the

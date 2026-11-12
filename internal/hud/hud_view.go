@@ -2,6 +2,7 @@ package hud
 
 import (
 	"fmt"
+	"math"
 	"runtime"
 	"strings"
 	"sync"
@@ -478,6 +479,12 @@ func renderChord(c *ui.Context, chord engine.DisplayChord, t theme.ThemeConfig, 
 		Key(chord.ID).
 		Center().
 		Gap(6)
+	if cfg.Background.Enabled {
+		chordColumn = chordColumn.
+			Padding(12, 16).
+			Radius(14).
+			Background(parseHexSafe(cfg.Background.Color, ui.RGBA(0, 0, 0, 0.35)))
+	}
 	if trans != nil {
 		chordColumn = chordColumn.Transition(*trans)
 	}
@@ -491,8 +498,16 @@ func renderChord(c *ui.Context, chord engine.DisplayChord, t theme.ThemeConfig, 
 
 			for i, key := range chord.Keys {
 				streak := 1
-				if i == len(chord.Keys)-1 && chord.Streak > 1 && cfg.Layout.ShowPressCount {
-					streak = chord.Streak
+				if i == len(chord.Keys)-1 && cfg.Layout.ShowPressCount {
+					// A wheel gesture carries its distance instead of a press count:
+					// ten notches is one motion, and the notch total is the only
+					// number that describes it. Round it so a trackpad's fractional
+					// deltas still read as whole notches.
+					if notches := int(math.Round(float64(chord.ScrollAmount))); notches > 1 {
+						streak = notches
+					} else if chord.Streak > 1 {
+						streak = chord.Streak
+					}
 				}
 				renderKeyCap(c, fmt.Sprintf("%s-key-%d", chord.ID, i), key, streak, chord.Velocity, chord.IsFinisher, t, cfg)
 			}
@@ -503,6 +518,20 @@ func renderChord(c *ui.Context, chord engine.DisplayChord, t theme.ThemeConfig, 
 			renderActionSubtitle(c, chord, t, cfg)
 		}
 	})
+}
+
+// colorLuminance is the perceived brightness of a colour, 0 for black and 1
+// for white. Alpha is ignored: it answers "which way does this colour lean",
+// which is what every contrast decision here needs.
+func colorLuminance(c ui.Color) float32 {
+	return (float32(c.R)*0.299 + float32(c.G)*0.587 + float32(c.B)*0.114) / 255.0
+}
+
+func absFloat32(v float32) float32 {
+	if v < 0 {
+		return -v
+	}
+	return v
 }
 
 // renderKeyCap renders a single tactile keycap driven by live configuration styles and physical models.
@@ -544,7 +573,11 @@ func renderKeyCap(c *ui.Context, keyId string, key engine.KeyCap, streak int, ve
 		}
 	}
 
-	// Tactile hold physics: dynamic key travel descent and press highlight FX
+	// Tactile hold physics: dynamic key travel descent and press highlight FX.
+	// An explicit model owns its travel and held response, so choosing PBT on a
+	// pulse theme still sinks like a mechanical switch.
+	travelDepth := t.EffectiveTravelDepthFor(cfg.Appearance.Style)
+	heldPhysics := t.EffectiveHeldPhysicsFor(cfg.Appearance.Style)
 	yOffset := float32(0)
 	pressFxEnabled := cfg.Appearance.Animation != "none" && !cfg.Appearance.DisablePressAnimation
 	if key.IsHeld && pressFxEnabled {
@@ -561,8 +594,8 @@ func renderKeyCap(c *ui.Context, keyId string, key engine.KeyCap, streak int, ve
 		}
 
 		// Pulse physics mode keeps physical position zero; mechanical descent uses restrained travel depth.
-		if t.HeldPhysics != theme.HeldPulse {
-			yOffset = t.EffectiveTravelDepth() * 0.70
+		if heldPhysics != theme.HeldPulse {
+			yOffset = travelDepth * 0.70
 		}
 	}
 
@@ -584,82 +617,138 @@ func renderKeyCap(c *ui.Context, keyId string, key engine.KeyCap, streak int, ve
 	shadowSpread := float32(0)
 	shadowBlur := float32(6)
 	shadowColor := borderColor.Alpha(0.25)
+	// Silhouette scaling: a model has to remain recognisable across the entire
+	// keyboard, not only on keys with long labels, so the minimum cap box is
+	// part of the physical signature instead of a fixed 44x38 for every build.
+	styleW := float32(1)
+	styleH := float32(1)
+	insetGlow := ui.Transparent
+	insetBlur := float32(7)
 
 	switch style {
 	case "minimal":
 		padX = 14
-		padY = 7
+		padY = 6
 		borderWidth = 0
 		borderColor = ui.Transparent
-		shadowY = 1
-		shadowBlur = 3
-		shadowSpread = 0
-		shadowColor = ui.RGBA(0, 0, 0, 0.15)
-		radius = radius * 0.7
-	case "laptop":
-		padX = 12
-		padY = 6
-		borderWidth = 1.0
-		borderColor = borderColor.Alpha(0.4)
-		shadowY = 2
-		shadowBlur = 4
-		shadowSpread = 0
-		shadowColor = ui.RGBA(0, 0, 0, 0.22)
-		radius = radius * 0.6
-	case "pbt":
-		padX = 15
-		padY = 9
-		borderWidth = borderWidth + 0.8
-		shadowY = 4
-		shadowBlur = 6
-		shadowSpread = 0
-		shadowColor = ui.RGBA(0, 0, 0, 0.35)
-		radius = radius * 1.15
-	case "glass":
-		padX = 15
-		padY = 8
-		if bg.A >= 128 {
-			bg = bg.Alpha(0.45)
-		}
-		borderWidth = 1.5
-		shadowY = 5
-		shadowBlur = 12
-		shadowSpread = 0
-		shadowColor = ui.RGBA(0, 0, 0, 0.30)
-		if key.IsHeld {
-			shadowBlur = 16
-		}
-	case "neon":
-		padX = 14
-		padY = 8
-		borderWidth = 2.0
-		shadowY = 0
-		shadowBlur = 12
-		shadowSpread = 1
-		shadowColor = borderColor.Alpha(0.60)
-		if key.IsHeld {
-			shadowBlur = 16
-			shadowColor = borderColor.Alpha(0.80)
-		}
-	case "retro":
-		padX = 15
-		padY = 9
-		borderWidth = 1.5
-		shadowY = 4
-		shadowBlur = 0
-		shadowSpread = 0 // Zero spread: hard bevel drops strictly downwards, zero horizontal spill
-		shadowColor = borderColor.Alpha(0.65)
-		radius = radius * 0.5
-	case "outline":
-		padX = 14
-		padY = 8
-		borderWidth = 1.8
 		shadowY = 0
 		shadowBlur = 0
 		shadowSpread = 0
 		shadowColor = ui.Transparent
-	default: // "lowprofile"
+		radius = radius * 0.5
+		styleH = 0.9
+	case "laptop":
+		padX = 13
+		padY = 4
+		borderWidth = 1.0
+		borderColor = borderColor.Alpha(0.4)
+		shadowY = 2
+		shadowBlur = 3
 		shadowSpread = 0
+		shadowColor = ui.RGBA(0, 0, 0, 0.22)
+		radius = radius * 0.45
+		styleW = 1.02
+		styleH = 0.78
+	case "pbt":
+		padX = 16
+		padY = 11
+		borderWidth = borderWidth + 1.0
+		shadowY = 5
+		shadowBlur = 7
+		shadowSpread = 0
+		shadowColor = ui.RGBA(0, 0, 0, 0.38)
+		radius = radius * 1.25
+		styleW = 1.06
+		styleH = 1.2
+		insetGlow = ui.RGBA(255, 255, 255, 0.12)
+	case "glass":
+		// Frosted glass is a surface, not a hole. Three things make it read as
+		// glass, and none of them is "make it transparent": a fill that keeps
+		// enough of the theme's tint for the label to keep its contrast, an
+		// edge drawn from the label colour so it catches light on a dark
+		// backdrop and reads as a rule on a light one, and a real drop shadow
+		// that lifts the cap off the surface. Thirty percent of white with a
+		// white glow around it was none of those: on a dark stage it became a
+		// grey tile with dark text, which is the one thing glass never is.
+		padX = 15
+		padY = 9
+		if bg.A > 200 {
+			// An opaque theme has no glass in it yet: give it a body you can
+			// still see through, and let the edge do the rest.
+			bg = bg.Alpha(0.55)
+		}
+		borderWidth = 1.2
+		borderColor = textColor.Alpha(0.26)
+		shadowY = 5
+		shadowBlur = 18
+		shadowSpread = 0
+		shadowColor = ui.RGBA(0, 0, 0, 0.30)
+		radius = radius * 1.25
+		// A crisp inner top edge, not a blurred wash: this is the highlight
+		// that makes a flat rectangle read as a lit pane.
+		insetGlow = ui.RGBA(255, 255, 255, 0.45)
+		insetBlur = 2
+		if key.IsHeld {
+			shadowBlur = 22
+			shadowColor = ui.RGBA(0, 0, 0, 0.36)
+		}
+	case "neon":
+		padX = 14
+		padY = 8
+		borderWidth = 2.2
+		shadowY = 0
+		shadowBlur = 18
+		shadowSpread = 1
+		shadowColor = borderColor.Alpha(0.70)
+		insetGlow = borderColor.Alpha(0.40)
+		if key.IsHeld {
+			shadowBlur = 22
+			shadowColor = borderColor.Alpha(0.90)
+		}
+	case "retro":
+		padX = 15
+		padY = 12
+		borderWidth = 1.6
+		shadowY = 5
+		shadowBlur = 0
+		shadowSpread = 0 // Zero spread: hard bevel drops strictly downwards, zero horizontal spill
+		shadowColor = borderColor.Alpha(0.80)
+		radius = radius * 0.25
+		styleW = 1.04
+		styleH = 1.24
+		insetGlow = ui.RGBA(255, 255, 255, 0.14)
+	case "outline":
+		// A wireframe needs a stroke that exists. Some themes carry a black
+		// rule, others a translucent white one, and some draw their border in
+		// the same value as the cap itself, which leaves no line at all. When
+		// the border cannot draw one, the label ink does: it is the only colour
+		// in the theme guaranteed to be readable on the cap.
+		stroke := borderColor
+		if stroke.A < 60 || absFloat32(colorLuminance(stroke)-colorLuminance(bg)) < 0.25 {
+			stroke = textColor
+		}
+		padX = 15
+		padY = 9
+		// The body stays, faint. A wireframe that throws away the cap's own
+		// fill also throws away the contrast its label was chosen for, which is
+		// how a dark modifier cap ended up as white text on white.
+		if bg.A > 200 {
+			bg = bg.Alpha(0.55)
+		}
+		borderColor = stroke.Alpha(0.88)
+		borderWidth = 1.6
+		shadowY = 0
+		shadowBlur = 0
+		shadowSpread = 0
+		shadowColor = ui.Transparent
+		radius = radius * 0.55
+		styleH = 0.98
+	default: // "lowprofile"
+		shadowY = 2
+		shadowBlur = 5
+		shadowSpread = 0
+		radius = radius * 0.9
+		styleH = 0.97
 	}
 
 	// Velocity Dynamics: Supersonic Radiant Glow (Allegro) & Finisher Settle Accent
@@ -694,6 +783,9 @@ func renderKeyCap(c *ui.Context, keyId string, key engine.KeyCap, streak int, ve
 	// Mouse event accent: mouse keycaps glow with the active mouse theme accent color (e.g. vibrant green)
 	mth := theme.MouseThemeByID(cfg.Mouse.ThemePreset)
 	mouseAccent := ui.Hex(mth.LeftColor)
+	if cfg.Mouse.Color != "" {
+		mouseAccent = parseHexSafe(cfg.Mouse.Color, mouseAccent)
+	}
 	if isMouse && borderColor.A > 0 {
 		borderColor = mouseAccent.Alpha(0.65)
 	}
@@ -709,6 +801,19 @@ func renderKeyCap(c *ui.Context, keyId string, key engine.KeyCap, streak int, ve
 		minW = 54
 	}
 
+	// The model shapes the silhouette, not only its border. Without this the
+	// 44x38 floor would flatten laptop, PBT, and retro into the same rectangle.
+	minW *= styleW
+	minH *= styleH
+
+	justify := ui.Center
+	switch cfg.Text.Alignment {
+	case config.AlignCenterLeft:
+		justify = ui.Start
+	case config.AlignCenterRight:
+		justify = ui.End
+	}
+
 	box := ui.Box(c).
 		Key(keyId).
 		Background(bg).
@@ -719,8 +824,23 @@ func renderKeyCap(c *ui.Context, keyId string, key engine.KeyCap, streak int, ve
 		MinWidth(minW).
 		MinHeight(minH).
 		AlignItems(ui.Center).
-		Justify(ui.Center).
+		Justify(justify).
 		Shadow(0, shadowY, shadowBlur, shadowSpread, shadowColor)
+
+	if insetGlow.A > 0 {
+		// A restrained inner light gives thick PBT, glass, neon, and retro caps
+		// a readable surface instead of a flat sticker on the overlay. Glass
+		// asks for a tight one: a wide wash reads as a smudge, not an edge.
+		box = box.InsetShadow(0, 1, insetBlur, 0, insetGlow)
+	}
+
+	if cfg.Color.UseGradient && bg.A > 0 {
+		to := borderColor
+		if to.A == 0 {
+			to = bg.Mix(ui.RGBA(255, 255, 255, 0.35), 0.35)
+		}
+		box.Gradient(bg, to, 135)
+	}
 
 	if yOffset > 0 {
 		box.Translate(0, yOffset)
@@ -736,8 +856,10 @@ func renderKeyCap(c *ui.Context, keyId string, key engine.KeyCap, streak int, ve
 			ui.Icon(c, icon).Size(iconSize, iconSize).TextColor(iconColor)
 		} else if shouldShowIcon {
 			iconSize := fontSize * 0.88
-			ui.Row(c).AlignItems(ui.Center).Justify(ui.Center).Gap(6).Children(func() {
+			showIcon := func() {
 				ui.Icon(c, icon).Size(iconSize, iconSize).TextColor(iconColor)
+			}
+			showText := func() {
 				if label != "" && !isArrow {
 					ui.Text(c, label).
 						FontSize(fontSize).
@@ -745,6 +867,15 @@ func renderKeyCap(c *ui.Context, keyId string, key engine.KeyCap, streak int, ve
 						SingleLine().
 						TextColor(textColor)
 				}
+			}
+			ui.Row(c).AlignItems(ui.Center).Justify(ui.Center).Gap(6).Children(func() {
+				if cfg.Layout.IconAlignment == "flex-end" {
+					showText()
+					showIcon()
+					return
+				}
+				showIcon()
+				showText()
 			})
 		} else {
 			ui.Text(c, label).

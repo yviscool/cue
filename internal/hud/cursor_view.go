@@ -114,7 +114,7 @@ func RenderMouseOverlay(c *ui.Context, state engine.MouseVisualState, cfg config
 
 	// Primary and secondary button colors from MouseTheme
 	mth := theme.MouseThemeByID(cfg.Mouse.ThemePreset)
-	if cfg.Mouse.Color != "" && cfg.Mouse.ThemePreset == "" {
+	if cfg.Mouse.Color != "" {
 		mth.LeftColor = cfg.Mouse.Color
 		mth.RingColor = cfg.Mouse.Color
 	}

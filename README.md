@@ -118,8 +118,8 @@ go build -ldflags="-H windowsgui -s -w" -o cue.exe .
 ```
 
 ### 3. Usage & Hotkeys
-- **Toggle Overlay Visibility**: Press `Shift + F10` (customizable in Settings).
-- **Settings Studio**: Left-click or right-click the Cue tray icon and select **Settings** to customize themes, positions, and mouse behaviors.
+- **Toggle Overlay Visibility**: Press `Shift + F10` (record your own hotkey in **Settings › App & Behavior**).
+- **Settings**: Left-click or right-click the Cue tray icon and choose **Settings**.
 
 ---
 

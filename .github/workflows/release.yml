@@ -28,7 +28,7 @@ jobs:
 
       - name: Build Production Binary
         run: |
-          go build -ldflags="-H windowsgui -s -w" -o cue.exe .
+          go build -ldflags="-H windowsgui -s -w -X github.com/yviscool/cue/internal/version.Version=${{ github.ref_name }}" -o cue.exe .
           Get-FileHash -Algorithm SHA256 cue.exe | Format-List
           $hash = (Get-FileHash -Algorithm SHA256 cue.exe).Hash.ToLower()
           "$hash  cue.exe" | Out-File -Encoding utf8 cue.exe.sha256

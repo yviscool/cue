@@ -2,9 +2,11 @@ package engine
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/yviscool/cue/internal/context"
 	"github.com/yviscool/cue/internal/hook"
@@ -606,6 +608,7 @@ func TestPrivacyMasking(t *testing.T) {
 	eng := NewEngine(
 		WithFilterMode(FilterAll),
 		WithMatcher(matcher),
+		WithPrivacyMode(true),
 	)
 	defer eng.Stop()
 
@@ -1425,5 +1428,340 @@ func TestSequenceExpiresOutsideWindow(t *testing.T) {
 	last := chords[len(chords)-1]
 	if last.IsSequence {
 		t.Fatal("chords outside the sequence window must not combine")
+	}
+}
+
+// TestStreakSurvivesWordGrouping pins the fix for a guard that inverted its own
+// intent: word grouping owns plain characters, and those never reach the streak
+// path, so disabling the streak for every unmodified key only broke the keys
+// that had nothing to do with words — arrows, Enter, Backspace and the rest.
+// Three presses must read as one cue with a ×3 badge in both modes.
+func TestStreakSurvivesWordGrouping(t *testing.T) {
+	baseTime := time.Date(2026, 11, 12, 13, 0, 0, 0, time.UTC)
+	keys := []string{"Right", "Left", "Enter", "Backspace", "Delete", "Tab", "F5"}
+
+	for _, grouping := range []bool{true, false} {
+		for _, key := range keys {
+			eng := NewEngine(WithWordGrouping(grouping), WithFilterMode(FilterAll))
+			for i := 0; i < 3; i++ {
+				at := baseTime.Add(time.Duration(i) * 150 * time.Millisecond)
+				eng.HandleEvent(hook.InputEvent{Type: hook.EventKeyDown, KeyName: key, Timestamp: at})
+				eng.HandleEvent(hook.InputEvent{Type: hook.EventKeyUp, KeyName: key, Timestamp: at.Add(30 * time.Millisecond)})
+			}
+
+			chords := eng.Chords()
+			if len(chords) != 1 {
+				t.Errorf("grouping=%v %s: %d chords, want 1", grouping, key, len(chords))
+			} else if chords[0].Streak != 3 {
+				t.Errorf("grouping=%v %s: streak = %d, want 3", grouping, key, chords[0].Streak)
+			}
+			eng.Stop()
+		}
+	}
+}
+
+// TestRepeatMergesForSymbolsAndArrows replays the exact session a user reported
+// as "not merging": four brackets, five dots, three semicolons, three pipes and
+// four right arrows, typed at a normal ~110 ms cadence. Every run must collapse
+// into one cue carrying the count.
+//
+// The distinction that matters is not "letter vs symbol" but "does the repeat
+// carry new information": a repeated character or a repeated action reads as one
+// gesture with a count, while an interleaved different key breaks the run.
+func TestRepeatMergesForSymbolsAndArrows(t *testing.T) {
+	baseTime := time.Date(2026, 11, 12, 13, 0, 0, 0, time.UTC)
+
+	cases := []struct {
+		key   string
+		mods  hook.Modifiers
+		times int
+	}{
+		{"[", hook.ModNone, 4},
+		{"]", hook.ModNone, 4},
+		{".", hook.ModNone, 5},
+		{";", hook.ModNone, 3},
+		{"|", hook.ModShift, 3}, // Shift+\ reports the shifted glyph plus Shift
+		{"Right", hook.ModNone, 4},
+		{"Up", hook.ModNone, 2},
+	}
+
+	for _, tc := range cases {
+		eng := NewEngine(WithWordGrouping(true), WithFilterMode(FilterAll))
+		for i := 0; i < tc.times; i++ {
+			at := baseTime.Add(time.Duration(i) * 110 * time.Millisecond)
+			eng.HandleEvent(hook.InputEvent{
+				Type:      hook.EventKeyDown,
+				KeyName:   tc.key,
+				Modifiers: tc.mods,
+				Timestamp: at,
+			})
+			eng.HandleEvent(hook.InputEvent{
+				Type:      hook.EventKeyUp,
+				KeyName:   tc.key,
+				Modifiers: tc.mods,
+				Timestamp: at.Add(20 * time.Millisecond),
+			})
+		}
+
+		chords := eng.Chords()
+		if len(chords) != 1 {
+			t.Errorf("%s x%d: %d chords, want 1", tc.key, tc.times, len(chords))
+			eng.Stop()
+			continue
+		}
+		if chords[0].Streak != tc.times {
+			t.Errorf("%s: streak = %d, want %d", tc.key, chords[0].Streak, tc.times)
+		}
+		if len(chords[0].Keys) == 0 || chords[0].Keys[len(chords[0].Keys)-1].Label != tc.key {
+			t.Errorf("%s: label = %q, want %q", tc.key, chords[0].Keys[0].Label, tc.key)
+		}
+		eng.Stop()
+	}
+}
+
+// TestSmartFilterHidesSymbols documents the deliberate contract of the smart
+// filter: it shows shortcuts and special keys, not typed content. Symbols are
+// therefore invisible there and only repeat-merge in the all-keys filter.
+func TestSmartFilterHidesSymbols(t *testing.T) {
+	baseTime := time.Date(2026, 11, 12, 13, 0, 0, 0, time.UTC)
+
+	eng := NewEngine(WithWordGrouping(true), WithFilterMode(FilterSmart))
+	for i := 0; i < 4; i++ {
+		at := baseTime.Add(time.Duration(i) * 110 * time.Millisecond)
+		eng.HandleEvent(hook.InputEvent{Type: hook.EventKeyDown, KeyName: "[", Timestamp: at})
+		eng.HandleEvent(hook.InputEvent{Type: hook.EventKeyUp, KeyName: "[", Timestamp: at.Add(20 * time.Millisecond)})
+	}
+	if got := len(eng.Chords()); got != 0 {
+		t.Errorf("smart filter should hide typed symbols, got %d chords", got)
+	}
+	eng.Stop()
+
+	// Arrows are special keys, so they survive the smart filter and still merge.
+	eng = NewEngine(WithWordGrouping(true), WithFilterMode(FilterSmart))
+	for i := 0; i < 4; i++ {
+		at := baseTime.Add(time.Duration(i) * 110 * time.Millisecond)
+		eng.HandleEvent(hook.InputEvent{Type: hook.EventKeyDown, KeyName: "Right", Timestamp: at})
+		eng.HandleEvent(hook.InputEvent{Type: hook.EventKeyUp, KeyName: "Right", Timestamp: at.Add(20 * time.Millisecond)})
+	}
+	chords := eng.Chords()
+	if len(chords) != 1 || chords[0].Streak != 4 {
+		t.Errorf("arrow under smart filter: %d chords (streak %d), want 1 chord with streak 4",
+			len(chords), firstStreak(chords))
+	}
+	eng.Stop()
+}
+
+func firstStreak(chords []DisplayChord) int {
+	if len(chords) == 0 {
+		return 0
+	}
+	return chords[0].Streak
+}
+
+// TestWordStopsGrowingAtCap pins the word-chip ceiling. Holding a key makes the
+// OS repeat it, and the word path appended every repeat, so one hold produced a
+// label long enough to widen the card past the screen edge. The chip must seal
+// at the cap and stay there.
+func TestWordStopsGrowingAtCap(t *testing.T) {
+	baseTime := time.Date(2026, 11, 12, 13, 0, 0, 0, time.UTC)
+	eng := NewEngine(WithWordGrouping(true), WithFilterMode(FilterAll))
+
+	for i := 0; i < 40; i++ {
+		at := baseTime.Add(time.Duration(i) * 100 * time.Millisecond)
+		eng.HandleEvent(hook.InputEvent{
+			Type:        hook.EventKeyDown,
+			KeyName:     "a",
+			IsKeyRepeat: i > 0,
+			Timestamp:   at,
+		})
+	}
+	defer eng.Stop()
+
+	chords := eng.Chords()
+	if len(chords) != 1 {
+		t.Fatalf("%d chords, want 1", len(chords))
+	}
+	label := chords[0].Keys[0].Label
+	if got := utf8.RuneCountInString(label); got != maxWordRunes+1 {
+		t.Errorf("label %q has %d runes, want %d (cap plus ellipsis)", label, got, maxWordRunes+1)
+	}
+	if !strings.HasSuffix(label, "…") {
+		t.Errorf("capped label %q should end with an ellipsis", label)
+	}
+}
+
+// TestSmartFilterBreaksRepeatAcrossFilteredKey covers the invisible-key trap. In
+// the smart filter `=` is not displayed, but it still ends the word: `x=x` must
+// read as two separate x cues, not one ×2 cue. A filtered key that leaves no
+// visual trace must leave no trace in the repeat counter either.
+func TestSmartFilterBreaksRepeatAcrossFilteredKey(t *testing.T) {
+	baseTime := time.Date(2026, 11, 12, 13, 0, 0, 0, time.UTC)
+	eng := NewEngine(WithWordGrouping(true), WithFilterMode(FilterSmart))
+	defer eng.Stop()
+
+	for i, key := range []string{"x", "=", "x"} {
+		at := baseTime.Add(time.Duration(i) * 110 * time.Millisecond)
+		eng.HandleEvent(hook.InputEvent{Type: hook.EventKeyDown, KeyName: key, Timestamp: at})
+		eng.HandleEvent(hook.InputEvent{Type: hook.EventKeyUp, KeyName: key, Timestamp: at.Add(20 * time.Millisecond)})
+	}
+
+	chords := eng.Chords()
+	if len(chords) != 2 {
+		t.Fatalf("%d chords, want 2 (the filtered = must break the run)", len(chords))
+	}
+	for i, chord := range chords {
+		if chord.Streak != 1 {
+			t.Errorf("chord %d streak = %d, want 1", i, chord.Streak)
+		}
+	}
+}
+
+// TestHeldKeyDoesNotInflateStreak separates the user's press from the machine's
+// repeats. A two-second hold on an arrow generates dozens of events but exactly
+// one press, so the cue must stay at ×1 while still being kept alive.
+func TestHeldKeyDoesNotInflateStreak(t *testing.T) {
+	baseTime := time.Date(2026, 11, 12, 13, 0, 0, 0, time.UTC)
+	eng := NewEngine(WithWordGrouping(true), WithFilterMode(FilterAll))
+	defer eng.Stop()
+
+	eng.HandleEvent(hook.InputEvent{Type: hook.EventKeyDown, KeyName: "Right", Timestamp: baseTime})
+	for i := 1; i <= 20; i++ {
+		at := baseTime.Add(time.Duration(i) * 30 * time.Millisecond)
+		eng.HandleEvent(hook.InputEvent{
+			Type:        hook.EventKeyDown,
+			KeyName:     "Right",
+			IsKeyRepeat: true,
+			Timestamp:   at,
+		})
+	}
+
+	chords := eng.Chords()
+	if len(chords) != 1 {
+		t.Fatalf("%d chords, want 1", len(chords))
+	}
+	if chords[0].Streak != 1 {
+		t.Errorf("streak = %d, want 1: auto-repeat is not another press", chords[0].Streak)
+	}
+	if !chords[0].IsActive {
+		t.Error("held cue should stay active while the key is down")
+	}
+}
+
+// TestPrivacyModeIsOffByDefault pins the opt-in contract. Masking is a strong
+// claim about what the overlay may show, so a fresh install must not decide it
+// on the user's behalf — the shield stays off until it is switched on.
+func TestPrivacyModeIsOffByDefault(t *testing.T) {
+	matcher := newMockMatcher()
+	matcher.secrets["secret_key"] = true
+
+	eng := NewEngine(WithFilterMode(FilterAll), WithMatcher(matcher))
+	defer eng.Stop()
+
+	eng.HandleEvent(hook.InputEvent{Type: hook.EventKeyDown, KeyName: "secret_key"})
+	chords := eng.Chords()
+	if len(chords) != 1 {
+		t.Fatalf("expected 1 chord, got %d", len(chords))
+	}
+	if chords[0].IsPrivate {
+		t.Error("privacy shield must be off until the user enables it")
+	}
+	if got := chords[0].Keys[0].Label; got != "secret_key" {
+		t.Errorf("label = %q, want the real key while the shield is off", got)
+	}
+
+	// Turning it on at runtime takes effect on the next keystroke.
+	eng.SetPrivacyMode(true)
+	eng.HandleEvent(hook.InputEvent{Type: hook.EventKeyDown, KeyName: "secret_key", Timestamp: time.Now().Add(2 * time.Second)})
+	chords = eng.Chords()
+	if len(chords) != 2 || !chords[1].IsPrivate {
+		t.Error("enabling the shield should mask the following keystroke")
+	}
+}
+
+// TestScrollGestureAccumulatesNotches pins the wheel gesture: ten notches are one
+// motion, so they must read as one cue carrying ×10 rather than ten cues or a
+// single cue with no number at all.
+func TestScrollGestureAccumulatesNotches(t *testing.T) {
+	baseTime := time.Date(2026, 11, 12, 13, 0, 0, 0, time.UTC)
+	eng := NewEngine(WithFilterMode(FilterAll), WithShowMouseClicks(true))
+	defer eng.Stop()
+
+	for i := 0; i < 10; i++ {
+		at := baseTime.Add(time.Duration(i) * 60 * time.Millisecond)
+		eng.HandleEvent(hook.InputEvent{Type: hook.EventMouseWheel, WheelDelta: -120, Timestamp: at})
+	}
+
+	chords := eng.Chords()
+	if len(chords) != 1 {
+		t.Fatalf("%d chords, want 1", len(chords))
+	}
+	if got := chords[0].ScrollAmount; got != 10 {
+		t.Errorf("scroll amount = %v, want 10 notches", got)
+	}
+	if chords[0].Streak != 1 {
+		t.Errorf("streak = %d, want 1: a scroll is not a series of presses", chords[0].Streak)
+	}
+}
+
+// TestScrollGestureBreaksOnDirectionAndPause covers the two boundaries: reversing
+// direction is a new motion, and so is a pause longer than the merge window.
+func TestScrollGestureBreaksOnDirectionAndPause(t *testing.T) {
+	baseTime := time.Date(2026, 11, 12, 13, 0, 0, 0, time.UTC)
+	eng := NewEngine(WithFilterMode(FilterAll), WithShowMouseClicks(true))
+	defer eng.Stop()
+
+	// Down twice, then up once: the reversal must start its own cue.
+	eng.HandleEvent(hook.InputEvent{Type: hook.EventMouseWheel, WheelDelta: -120, Timestamp: baseTime})
+	eng.HandleEvent(hook.InputEvent{Type: hook.EventMouseWheel, WheelDelta: -120, Timestamp: baseTime.Add(60 * time.Millisecond)})
+	eng.HandleEvent(hook.InputEvent{Type: hook.EventMouseWheel, WheelDelta: 120, Timestamp: baseTime.Add(120 * time.Millisecond)})
+	if got := len(eng.Chords()); got != 2 {
+		t.Fatalf("reversal produced %d chords, want 2", got)
+	}
+
+	// A pause longer than scrollMergeWindow ends the gesture too.
+	eng2 := NewEngine(WithFilterMode(FilterAll), WithShowMouseClicks(true))
+	defer eng2.Stop()
+	eng2.HandleEvent(hook.InputEvent{Type: hook.EventMouseWheel, WheelDelta: -120, Timestamp: baseTime})
+	eng2.HandleEvent(hook.InputEvent{Type: hook.EventMouseWheel, WheelDelta: -120, Timestamp: baseTime.Add(scrollMergeWindow + 100*time.Millisecond)})
+	if got := len(eng2.Chords()); got != 2 {
+		t.Fatalf("a pause should start a new gesture, got %d chords", got)
+	}
+}
+
+// TestAppSwitchBreaksRepeatChain keeps a repeat count inside one application. The
+// same arrow means "forward" in a browser and "move the caret" in an editor, so
+// presses on either side of a switch are two cues, not one ×2.
+func TestAppSwitchBreaksRepeatChain(t *testing.T) {
+	baseTime := time.Date(2026, 11, 12, 13, 0, 0, 0, time.UTC)
+	eng := NewEngine(WithWordGrouping(true), WithFilterMode(FilterAll))
+	defer eng.Stop()
+
+	press := func(at time.Time) {
+		eng.HandleEvent(hook.InputEvent{Type: hook.EventKeyDown, KeyName: "Right", Timestamp: at})
+		eng.HandleEvent(hook.InputEvent{Type: hook.EventKeyUp, KeyName: "Right", Timestamp: at.Add(20 * time.Millisecond)})
+	}
+
+	eng.SetAppContext(context.AppContext{Exe: "chrome.exe", AppID: "chrome", AppName: "Chrome"})
+	press(baseTime)
+	eng.SetAppContext(context.AppContext{Exe: "code.exe", AppID: "vscode", AppName: "VS Code"})
+	press(baseTime.Add(150 * time.Millisecond))
+
+	if got := len(eng.Chords()); got != 2 {
+		t.Fatalf("cross-application presses merged into %d chord(s), want 2", got)
+	}
+
+	// A retitled window is the same application and must not break the run.
+	eng2 := NewEngine(WithWordGrouping(true), WithFilterMode(FilterAll))
+	defer eng2.Stop()
+	eng2.SetAppContext(context.AppContext{Exe: "chrome.exe", AppID: "chrome", Title: "Tab A"})
+	eng2.HandleEvent(hook.InputEvent{Type: hook.EventKeyDown, KeyName: "Right", Timestamp: baseTime})
+	eng2.HandleEvent(hook.InputEvent{Type: hook.EventKeyUp, KeyName: "Right", Timestamp: baseTime.Add(20 * time.Millisecond)})
+	eng2.SetAppContext(context.AppContext{Exe: "chrome.exe", AppID: "chrome", Title: "Tab B"})
+	eng2.HandleEvent(hook.InputEvent{Type: hook.EventKeyDown, KeyName: "Right", Timestamp: baseTime.Add(150 * time.Millisecond)})
+	eng2.HandleEvent(hook.InputEvent{Type: hook.EventKeyUp, KeyName: "Right", Timestamp: baseTime.Add(170 * time.Millisecond)})
+
+	chords := eng2.Chords()
+	if len(chords) != 1 || chords[0].Streak != 2 {
+		t.Errorf("a tab retitle broke the run: %d chords, streak %d", len(chords), firstStreak(chords))
 	}
 }

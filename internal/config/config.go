@@ -30,10 +30,10 @@ const (
 type AppearanceSettings struct {
 	Monitor               string    `json:"monitor"`               // "" / "primary" = primary display, otherwise display ID or label
 	FlexDirection         string    `json:"flexDirection"`         // "row" | "column"
-	Alignment             Alignment `json:"alignment"`             // default "bottom-center"
+	Alignment             Alignment `json:"alignment"`             // default "bottom-right"
 	MarginX               int       `json:"marginX"`               // default 100
 	MarginY               int       `json:"marginY"`               // default 100
-	Animation             string    `json:"animation"`             // "none" | "fade" | "zoom" | "float" | "slide"
+	Animation             string    `json:"animation"`             // "spring" (default) | "none" | "fade" | "zoom" | "float" | "slide"
 	AnimationDuration     float64   `json:"animationDuration"`     // default 0.25 (seconds)
 	DisablePressAnimation bool      `json:"disablePressAnimation"` // disables keycap sinking & press highlight FX
 	Style                 string    `json:"style"`                 // "lowprofile" | "minimal" | "laptop" | "pbt"
@@ -70,6 +70,15 @@ type LayoutSettings struct {
 	ShowSymbol     bool   `json:"showSymbol"`     // default true
 	ShowPressCount bool   `json:"showPressCount"` // default true
 	IconAlignment  string `json:"iconAlignment"`  // "flex-start" | "center" | "flex-end"
+}
+
+// AppBehaviorSettings groups operating-system behaviour: launch, tray, and the
+// privacy boundary around foreground-application inspection.
+type AppBehaviorSettings struct {
+	StartAtLogin    bool     `json:"startAtLogin"`           // register Cue in the user's login items
+	StartHidden     bool     `json:"startHidden"`            // start with the overlay hidden
+	TrayClickAction string   `json:"trayClickAction"`        // "settings" | "toggle"
+	ExcludedApps    []string `json:"excludedApps,omitempty"` // process names that never contribute context
 }
 
 // ColorSettings defines keycap primary/secondary gradient fills.
@@ -120,10 +129,11 @@ type MouseSettings struct {
 	KeepHighlight    bool   `json:"keepHighlight"`    // default false
 	ShowIndicator    bool   `json:"showIndicator"`    // default true
 	KeepIndicator    bool   `json:"keepIndicator"`    // default true
-	IndicatorSize    int    `json:"indicatorSize"`    // default 50
+	IndicatorSize    int    `json:"indicatorSize"`    // default 135
 	IndicatorOffsetX int    `json:"indicatorOffsetX"` // default 50
 	IndicatorOffsetY int    `json:"indicatorOffsetY"` // default 50
 	ClickLingerMs    int    `json:"clickLingerMs"`    // default 180 (ms)
+	DragThreshold    int    `json:"dragThreshold"`    // default 50 (px)
 
 	// Opacity is the mouse overlay's own alpha, independent of the keycap
 	// overlay: the cursor ring and button indicator sit under the pointer and
@@ -160,14 +170,15 @@ type CustomShortcut struct {
 
 // GeneralSettings mirrors Cue General tab settings.
 type GeneralSettings struct {
-	Filter           string   `json:"filter"`           // "none" | "modifiers" | "custom" | "silent"
-	AllowedKeys      []string `json:"allowedKeys"`      // custom allowed raw keys
-	ShowEventHistory bool     `json:"showEventHistory"` // default false
-	MaxHistory       int      `json:"maxHistory"`       // default 5 (2 to 12)
-	LingerDurationMs int      `json:"lingerDurationMs"` // default 5000 (ms)
-	ToggleShortcut   []string `json:"toggleShortcut"`   // default ["ShiftLeft", "F10"]
-	DragThreshold    int      `json:"dragThreshold"`    // default 50
-	WordGrouping     bool     `json:"wordGrouping"`     // continuous alphanumeric word grouping
+	Filter           string   `json:"filter"`                  // "none" | "modifiers" | "custom" | "silent"
+	AllowedKeys      []string `json:"allowedKeys"`             // custom allowed raw keys
+	ShowEventHistory bool     `json:"showEventHistory"`        // default true
+	MaxHistory       int      `json:"maxHistory"`              // default 5 (2 to 12)
+	LingerDurationMs int      `json:"lingerDurationMs"`        // default 4500 (ms)
+	ToggleShortcut   []string `json:"toggleShortcut"`          // default ["ShiftLeft", "F10"]
+	DragThreshold    int      `json:"dragThreshold,omitempty"` // deprecated: migrated to mouse.dragThreshold
+	WordGrouping     bool     `json:"wordGrouping"`            // continuous alphanumeric word grouping
+	PrivacyMode      bool     `json:"privacyMode"`             // mask keystrokes typed into password, login and banking windows
 }
 
 // AppConfig is the complete, 100% faithful configuration model matching Cue specifications.
@@ -175,15 +186,16 @@ type AppConfig struct {
 	// Version is the schema version used for one-time configuration migrations.
 	Version int `json:"version"`
 
-	General    GeneralSettings    `json:"general"`
-	Appearance AppearanceSettings `json:"appearance"`
-	Layout     LayoutSettings     `json:"layout"`
-	Color      ColorSettings      `json:"color"`
-	Modifier   ModifierSettings   `json:"modifier"`
-	Text       TextSettings       `json:"text"`
-	Border     BorderSettings     `json:"border"`
-	Background BackgroundSettings `json:"background"`
-	Mouse      MouseSettings      `json:"mouse"`
+	General    GeneralSettings     `json:"general"`
+	Appearance AppearanceSettings  `json:"appearance"`
+	Layout     LayoutSettings      `json:"layout"`
+	Color      ColorSettings       `json:"color"`
+	Modifier   ModifierSettings    `json:"modifier"`
+	Text       TextSettings        `json:"text"`
+	Border     BorderSettings      `json:"border"`
+	Background BackgroundSettings  `json:"background"`
+	Mouse      MouseSettings       `json:"mouse"`
+	App        AppBehaviorSettings `json:"app"`
 
 	// Jobsian Enhanced Extensions (Optional enhancements)
 	TactileAudio    bool             `json:"tactileAudio"`    // Micro-acoustics ON/OFF
@@ -225,7 +237,10 @@ func (c AppConfig) EffectiveVolume() float64 {
 //	3 - context intelligence (semanticContext / showAppBadge / custom shortcuts)
 //	4 - presentation controls (keycap overlay opacity, keystroke volume)
 //	5 - mouse overlay opacity
-const configVersion = 5
+//	6 - settings IA cleanup: drag threshold moves to the mouse section,
+//	    previously inert presentation fields get safe defaults, and app
+//	    behaviour (launch, tray, privacy) is introduced.
+const configVersion = 6
 
 // DefaultConfig returns the official Cue defaults. Theme-derived values are left
 // empty/zero on purpose: the selected theme is the single source of truth for
@@ -235,36 +250,37 @@ func DefaultConfig() AppConfig {
 	return AppConfig{
 		Version: configVersion,
 		General: GeneralSettings{
-			Filter:           "modifiers",
+			Filter:           "none",
 			AllowedKeys:      []string{"ControlLeft", "MetaLeft", "Alt"},
-			ShowEventHistory: false,
+			ShowEventHistory: true,
 			MaxHistory:       5,
-			LingerDurationMs: 5000,
+			LingerDurationMs: 4500,
 			ToggleShortcut:   []string{"ShiftLeft", "F10"},
-			DragThreshold:    50,
 			WordGrouping:     true,
+			PrivacyMode:      false,
 		},
 		Appearance: AppearanceSettings{
-			Monitor:           "",
-			FlexDirection:     "column",
-			Alignment:         AlignBottomCenter,
-			MarginX:           100,
-			MarginY:           100,
-			Animation:         "fade",
-			AnimationDuration: 0.25,
-			Style:             "",
-			Opacity:           DefaultOpacity,
+			Monitor:               "",
+			FlexDirection:         "column",
+			Alignment:             AlignBottomRight,
+			MarginX:               100,
+			MarginY:               100,
+			Animation:             "spring",
+			AnimationDuration:     0.25,
+			DisablePressAnimation: true,
+			Style:                 "",
+			Opacity:               DefaultOpacity,
 		},
 		Layout: LayoutSettings{
 			ShowIcon:       true,
 			ShowSymbol:     true,
 			ShowPressCount: true,
-			IconAlignment:  "flex-end",
+			IconAlignment:  "center",
 		},
 		Color: ColorSettings{
 			Color:          "",
 			SecondaryColor: "",
-			UseGradient:    true,
+			UseGradient:    false,
 		},
 		Modifier: ModifierSettings{
 			Highlight:      false,
@@ -287,32 +303,59 @@ func DefaultConfig() AppConfig {
 			Radius:  0,
 		},
 		Background: BackgroundSettings{
-			Enabled: true,
-			Color:   "#ffffff99",
+			Enabled: false,
+			Color:   "",
 		},
 		Mouse: MouseSettings{
 			ShowClicks:       false,
-			Size:             150,
-			Color:            "#00FF6A",
+			Size:             40,
+			Color:            "",
 			ThemePreset:      "neon_green",
 			KeepHighlight:    false,
 			ShowIndicator:    false,
 			KeepIndicator:    false,
-			IndicatorSize:    50,
-			IndicatorOffsetX: 50,
-			IndicatorOffsetY: 50,
-			ClickLingerMs:    180,
+			IndicatorSize:    135,
+			IndicatorOffsetX: 35,
+			IndicatorOffsetY: 35,
+			ClickLingerMs:    60,
 			Opacity:          DefaultOpacity,
+			DragThreshold:    50,
+		},
+		App: AppBehaviorSettings{
+			StartAtLogin:    false,
+			StartHidden:     false,
+			TrayClickAction: "settings",
+			ExcludedApps:    nil,
 		},
 		TactileAudio:    true,
-		AudioProfile:    "auto",
+		AudioProfile:    "chip",
 		AudioVolume:     DefaultAudioVolume,
 		SemanticSub:     true,
 		SemanticContext: true,
 		ShowAppBadge:    true,
-		ThemePreset:     "Liquid Glass",
+		ThemePreset:     "Swiss Typography 1957",
 		Language:        "",
 	}
+}
+
+// Decode parses a pasted configuration, starting from the factory defaults so a
+// partial file keeps every setting it does not mention. It applies the same
+// migrations as a file load, so a shared v5 document is safe to import.
+// Without the defaults, importing a three-key JSON snippet would silently zero
+// sizes, filters, and colors.
+func Decode(data []byte) (AppConfig, error) {
+	cfg := DefaultConfig()
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return AppConfig{}, fmt.Errorf("parse config: %w", err)
+	}
+	migrateLegacyConfig(&cfg)
+	return cfg, nil
+}
+
+// Encode returns the indented JSON representation used on disk and by the
+// settings console's clipboard export.
+func Encode(cfg AppConfig) ([]byte, error) {
+	return json.MarshalIndent(cfg, "", "  ")
 }
 
 // Store manages thread-safe configuration file persistence and change watching.
@@ -632,6 +675,34 @@ func migrateLegacyConfig(c *AppConfig) bool {
 			c.Mouse.Opacity = DefaultOpacity
 		}
 		c.Version = 5
+		migrated = true
+	}
+
+	if c.Version < 6 {
+		// Version 6: fields that existed in the schema but were never rendered
+		// get the values that preserve the pre-v6 look. Drag threshold moves to
+		// the mouse section, where the gesture actually lives.
+		if c.Mouse.DragThreshold <= 0 {
+			c.Mouse.DragThreshold = c.General.DragThreshold
+			if c.Mouse.DragThreshold <= 0 {
+				c.Mouse.DragThreshold = 50
+			}
+		}
+		c.General.DragThreshold = 0
+		c.Color.UseGradient = false
+		c.Layout.IconAlignment = "center"
+		c.Text.Alignment = AlignCenter
+		c.Background.Enabled = false
+		if c.Mouse.Color == "#00FF6A" {
+			// Before v6 every theme selection copied the neon-green seed into
+			// mouse.color, which silently disabled the theme's own colors. Empty
+			// now means "follow the selected mouse theme".
+			c.Mouse.Color = ""
+		}
+		if c.App.TrayClickAction == "" {
+			c.App.TrayClickAction = "settings"
+		}
+		c.Version = 6
 		migrated = true
 	}
 

@@ -63,6 +63,12 @@ type DisplayChord struct {
 	Confidence semantic.Confidence
 	AppName    string
 	IsSequence bool
+
+	// ScrollAmount is the accumulated distance of a wheel gesture measured in
+	// notches (120 units = one notch). It is deliberately separate from Streak:
+	// a scroll is one continuous motion, not a series of presses, and a trackpad
+	// emits a dozen small deltas where a wheel emits one. Zero for non-scroll cues.
+	ScrollAmount float32
 }
 
 // MouseVisualState represents a mouse action visualization.

@@ -12,13 +12,13 @@ func TestI18nTranslations(t *testing.T) {
 	if mgr.GetLanguage() != LangZhCN {
 		t.Fatalf("expected LangZhCN, got %v", mgr.GetLanguage())
 	}
-	if text := mgr.T("tab_general"); text != "通用设置" {
+	if text := mgr.T("tab_general"); text != "应用与行为" {
 		t.Fatalf("unexpected zh-CN translation: %q", text)
 	}
 
 	// 2. Test English
 	mgr.SetLanguage(LangEnUS)
-	if text := mgr.T("tab_general"); text != "General" {
+	if text := mgr.T("tab_general"); text != "App & Behavior" {
 		t.Fatalf("unexpected en-US translation: %q", text)
 	}
 	if text := mgr.T("reset_defaults"); text != "Reset Defaults" {
@@ -27,13 +27,13 @@ func TestI18nTranslations(t *testing.T) {
 
 	// 3. Test Traditional Chinese
 	mgr.SetLanguage(LangZhTW)
-	if text := mgr.T("tab_general"); text != "一般設定" {
+	if text := mgr.T("tab_general"); text != "應用與行為" {
 		t.Fatalf("unexpected zh-TW translation: %q", text)
 	}
 
 	// 4. Test Japanese
 	mgr.SetLanguage(LangJaJP)
-	if text := mgr.T("tab_general"); text != "全般設定" {
+	if text := mgr.T("tab_general"); text != "アプリと動作" {
 		t.Fatalf("unexpected ja-JP translation: %q", text)
 	}
 

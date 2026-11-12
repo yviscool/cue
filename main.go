@@ -14,6 +14,7 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/yviscool/cue/internal/acoustic"
 	"github.com/yviscool/cue/internal/assets"
+	"github.com/yviscool/cue/internal/autostart"
 	"github.com/yviscool/cue/internal/config"
 	"github.com/yviscool/cue/internal/context"
 	"github.com/yviscool/cue/internal/engine"
@@ -38,6 +39,9 @@ type app struct {
 	tray       *mygo.Tray
 	hudVisible bool
 	hudMu      sync.Mutex
+
+	autostartKnown bool
+	autostartOn    bool
 }
 
 // toggleHUD switches the overlay window between visible and hidden states.
@@ -94,7 +98,110 @@ func isToggleShortcutMatch(ev hook.InputEvent, shortcutTokens []string) bool {
 	if ev.Modifiers != reqMods {
 		return false
 	}
-	return strings.EqualFold(strings.TrimSpace(ev.KeyName), reqKey)
+	return normalizeKeyToken(ev.KeyName) == normalizeKeyToken(reqKey)
+}
+
+// normalizeKeyToken reconciles the two vocabularies a hotkey can arrive in: the
+// glyph names the hook reports ("↵", "␣", "PgUp") and the plain names the
+// settings recorder saves ("Enter", "Space", "PageUp"). Without this, a hotkey
+// recorded in the UI would never fire for anything but letters, digits, F-keys,
+// and Esc.
+func normalizeKeyToken(s string) string {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "↵", "enter", "return":
+		return "enter"
+	case "⌫", "backspace", "bksp":
+		return "backspace"
+	case "⇥", "tab":
+		return "tab"
+	case "␣", "space", "spacebar":
+		return "space"
+	case "esc", "escape":
+		return "esc"
+	case "↑", "up", "arrowup":
+		return "up"
+	case "↓", "down", "arrowdown":
+		return "down"
+	case "←", "left", "arrowleft":
+		return "left"
+	case "→", "right", "arrowright":
+		return "right"
+	case "pgup", "pageup":
+		return "pageup"
+	case "pgdn", "pagedown":
+		return "pagedown"
+	case "del", "delete":
+		return "delete"
+	case "ins", "insert":
+		return "insert"
+	}
+	return strings.ToLower(strings.TrimSpace(s))
+}
+
+// isAppExcluded reports whether the foreground process is on the user's
+// privacy list. Matching is case-insensitive on the executable's base name, so
+// both "code" and "Code.exe" can be pasted by hand without surprising results.
+func isAppExcluded(ctx context.AppContext, excluded []string) bool {
+	exe := normalizeExeName(ctx.Exe)
+	if exe == "" || len(excluded) == 0 {
+		return false
+	}
+	for _, raw := range excluded {
+		if normalizeExeName(raw) == exe {
+			return true
+		}
+	}
+	return false
+}
+
+// normalizeExeName makes "Code", "code.exe" and "CODE.EXE" compare equal while
+// leaving non-executable profile ids alone.
+func normalizeExeName(name string) string {
+	return strings.TrimSuffix(context.NormalizeExe(name), ".exe")
+}
+
+// applyContext pushes a foreground snapshot to the engine, unless the app is
+// privacy-excluded. An empty context keeps universal shortcut decoding working
+// while withholding the window title and application identity.
+func (a *app) applyContext(ctx context.AppContext) {
+	if a.eng == nil {
+		return
+	}
+	if a.store != nil && isAppExcluded(ctx, a.store.Get().App.ExcludedApps) {
+		a.eng.SetAppContext(context.AppContext{})
+		return
+	}
+	a.eng.SetAppContext(ctx)
+}
+
+// previewSoundProfile lets the Sound tab audition a profile without changing
+// the saved configuration or depending on whether keystroke audio is enabled.
+func (a *app) previewSoundProfile(profile string) {
+	if a.player == nil {
+		return
+	}
+	wasEnabled := a.player.IsEnabled()
+	previous := a.player.GetProfile()
+	a.player.SetEnabled(true)
+	a.player.SetProfile(acoustic.SoundProfile(profile))
+	a.player.PlaySpatial(acoustic.SoundThock, "Space")
+	a.player.SetProfile(previous)
+	a.player.SetEnabled(wasEnabled)
+}
+
+// syncAutostart applies launch-at-login only when the intent actually changed,
+// so dragging a slider never shells out to reg.exe on every frame. The toggle is
+// a user preference rather than runtime state, so a failure is logged instead of
+// blocking the settings window.
+func (a *app) syncAutostart(enabled bool) {
+	if a.autostartKnown && a.autostartOn == enabled {
+		return
+	}
+	a.autostartKnown = true
+	a.autostartOn = enabled
+	if err := autostart.Set(enabled); err != nil {
+		log.Printf("autostart %v: %v", enabled, err)
+	}
 }
 
 // setFilter is the only write path for the tray capture-mode items. It persists
@@ -272,6 +379,7 @@ func (a *app) ready() {
 		engine.WithMouseClickLinger(time.Duration(cfg.Mouse.ClickLingerMs)*time.Millisecond),
 		engine.WithDragThreshold(cfg.General.DragThreshold),
 		engine.WithWordGrouping(cfg.General.WordGrouping),
+		engine.WithPrivacyMode(cfg.General.PrivacyMode),
 		engine.WithLingerShort(time.Duration(cfg.General.LingerDurationMs)*time.Millisecond),
 		engine.WithMaxChords(historyChordLimit(cfg)),
 	)
@@ -279,18 +387,17 @@ func (a *app) ready() {
 
 	a.settings = hud.NewSettingsController(a.store, a.eng, a.vState)
 	a.settings.SetContextSource(a.appCtx.Current)
+	a.settings.SetAudioPreview(a.previewSoundProfile)
 
 	// Push context changes into the engine and keep the settings preview live.
 	a.appCtx.Subscribe(func(ctx context.AppContext) {
-		if a.eng != nil {
-			a.eng.SetAppContext(ctx)
-		}
+		a.applyContext(ctx)
 		if a.settings != nil {
 			a.settings.Invalidate()
 		}
 	})
 
-	a.hudVisible = true
+	a.hudVisible = !cfg.App.StartHidden
 
 	// 1. Setup HUD overlay window with full screen bounds for Cue overlay & mouse tracking
 	d, _ := resolveDisplay(mygo.Screen.Displays(), cfg.Appearance.Monitor)
@@ -326,7 +433,9 @@ func (a *app) ready() {
 	a.hudWindow.SetHasShadow(false)
 	a.hudWindow.SetIgnoreMouseEvents(true)
 	disableWindowBorder(a.hudWindow.NativeHandle())
-	a.hudWindow.ShowInactive()
+	if a.hudVisible {
+		a.hudWindow.ShowInactive()
+	}
 
 	// 2. Dynamic config change listener: one apply path keeps the HUD, engine,
 	// theme, and overlay geometry in sync with every settings change.
@@ -361,8 +470,13 @@ func (a *app) ready() {
 	if err != nil {
 		log.Printf("tray warning: %v", err)
 	} else {
-		// Single or double click directly opens Settings Studio (just like cloudmusic)
+		// Single or double click follows the user's App Behavior preference.
 		a.tray.OnClick(func() {
+			cfg := a.store.Get()
+			if cfg.App.TrayClickAction == "toggle" {
+				a.toggleHUD()
+				return
+			}
 			a.settings.Open()
 		})
 		if msg := a.store.LastError(); msg != "" {
@@ -452,6 +566,16 @@ func historyChordLimit(cfg config.AppConfig) int {
 // startup and Store.OnChange use it, so a setting cannot be wired to one path
 // and silently ignored by the other.
 func (a *app) applyConfig(cfg config.AppConfig) {
+	// Importing a configuration from the clipboard can change the language; apply
+	// it here so the whole UI switches without a restart. The check avoids
+	// rebuilding the localizer on every unrelated slider drag.
+	if cfg.Language != "" {
+		lang := i18n.Language(cfg.Language)
+		if i18n.Instance().GetLanguage() != lang {
+			i18n.Instance().SetLanguage(lang)
+		}
+	}
+	a.syncAutostart(cfg.App.StartAtLogin)
 	if a.vState != nil {
 		a.vState.SetTheme(theme.ThemeByName(cfg.ThemePreset))
 		a.vState.SetConfig(cfg)
@@ -475,13 +599,17 @@ func (a *app) applyConfig(cfg config.AppConfig) {
 	a.eng.SetAllowedKeys(cfg.General.AllowedKeys)
 	a.eng.SetShowMouseClicks(cfg.Mouse.ShowClicks)
 	a.eng.SetMouseClickLinger(cfg.Mouse.ClickLingerMs)
-	a.eng.SetDragThreshold(cfg.General.DragThreshold)
+	a.eng.SetDragThreshold(cfg.Mouse.DragThreshold)
 	a.eng.SetSoundActive(cfg.TactileAudio)
 	a.eng.SetWordGrouping(cfg.General.WordGrouping)
+	a.eng.SetPrivacyMode(cfg.General.PrivacyMode)
 	a.eng.SetSemanticContext(cfg.SemanticContext)
 	a.eng.SetLingerDuration(cfg.General.LingerDurationMs)
 	a.eng.SetMaxChords(historyChordLimit(cfg))
 	a.eng.SetThemeName(cfg.ThemePreset)
+	if a.appCtx != nil {
+		a.applyContext(a.appCtx.Current())
+	}
 	a.applyCustomShortcuts(cfg)
 }
 

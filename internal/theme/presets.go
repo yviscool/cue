@@ -65,15 +65,11 @@ type ThemeConfig struct {
 	MouseRippleColor ui.Color
 }
 
-// EffectiveTravelDepth returns the physical downward displacement in pixels.
-func (t ThemeConfig) EffectiveTravelDepth() float32 {
-	if t.HeldPhysics == HeldPulse {
-		return 0.0
-	}
-	if t.TravelDepth > 0 {
-		return t.TravelDepth
-	}
-	switch t.DefaultStyle {
+// TravelDepthForStyle returns the nominal travel of a physical model. These are
+// the numbers the model names promise, so an explicit choice must honour them
+// even when the active theme's signature build travels a different distance.
+func TravelDepthForStyle(style string) float32 {
+	switch style {
 	case "glass", "neon", "outline":
 		return 0.0
 	case "laptop":
@@ -84,9 +80,52 @@ func (t ThemeConfig) EffectiveTravelDepth() float32 {
 		return 3.0
 	case "retro":
 		return 3.8
-	default:
+	default: // lowprofile
 		return 2.2
 	}
+}
+
+// HeldPhysicsForStyle returns how a model responds while held. Optical builds
+// pulse in place; scissor and flat builds settle quickly; mechanical builds sink.
+func HeldPhysicsForStyle(style string) HeldPhysicsMode {
+	switch style {
+	case "glass", "neon", "outline":
+		return HeldPulse
+	case "laptop", "minimal":
+		return HeldSnappy
+	default:
+		return HeldSink
+	}
+}
+
+// EffectiveTravelDepth returns the physical downward displacement in pixels.
+func (t ThemeConfig) EffectiveTravelDepth() float32 {
+	if t.HeldPhysics == HeldPulse {
+		return 0.0
+	}
+	if t.TravelDepth > 0 {
+		return t.TravelDepth
+	}
+	return TravelDepthForStyle(t.DefaultStyle)
+}
+
+// EffectiveTravelDepthFor resolves travel when the user picks a model
+// explicitly. An empty style inherits the theme, so presets keep their
+// hand-tuned distances while a chosen model owns its advertised travel.
+func (t ThemeConfig) EffectiveTravelDepthFor(style string) float32 {
+	if style == "" {
+		return t.EffectiveTravelDepth()
+	}
+	return TravelDepthForStyle(style)
+}
+
+// EffectiveHeldPhysicsFor resolves the held response for an explicit model.
+// It mirrors EffectiveTravelDepthFor: empty inherits the theme.
+func (t ThemeConfig) EffectiveHeldPhysicsFor(style string) HeldPhysicsMode {
+	if style == "" {
+		return t.HeldPhysics
+	}
+	return HeldPhysicsForStyle(style)
 }
 
 // EffectiveSpringBounce returns the spring bounce factor for motion animations.
@@ -919,6 +958,70 @@ var AllMouseThemes = []MouseThemeConfig{
 		WheelColor:  "#f1f5f9",
 		RingColor:   "#ffffff",
 		BadgeColor:  "#ef4444",
+	},
+	// The six below are organised by temperature rather than by hue name: a
+	// cool light, a neutral, then the warm and the material studies. Every
+	// palette keeps the left and right buttons distinguishable at a glance,
+	// because the overlay is read in a quarter of a second while typing.
+	{
+		ID:          "sakura_mist",
+		Name:        "Sakura Mist",
+		DisplayName: "樱花雾色 (Sakura Mist)",
+		LeftColor:   "#ff9eb5",
+		RightColor:  "#ffc2d1",
+		WheelColor:  "#ffe0e9",
+		RingColor:   "#ff9eb5",
+		BadgeColor:  "#e11d48",
+	},
+	{
+		ID:          "arctic_ice",
+		Name:        "Arctic Ice",
+		DisplayName: "极地冰晶 (Arctic Ice)",
+		LeftColor:   "#7dd3fc",
+		RightColor:  "#a5b4fc",
+		WheelColor:  "#e0f2fe",
+		RingColor:   "#7dd3fc",
+		BadgeColor:  "#f472b6",
+	},
+	{
+		ID:          "graphite_mono",
+		Name:        "Graphite Mono",
+		DisplayName: "石墨单色 (Graphite)",
+		LeftColor:   "#e2e8f0",
+		RightColor:  "#94a3b8",
+		WheelColor:  "#cbd5e1",
+		RingColor:   "#e2e8f0",
+		BadgeColor:  "#f87171",
+	},
+	{
+		ID:          "amber_terminal",
+		Name:        "Amber Terminal",
+		DisplayName: "琥珀终端 (Amber Terminal)",
+		LeftColor:   "#ffb000",
+		RightColor:  "#ff8a00",
+		WheelColor:  "#ffd166",
+		RingColor:   "#ffb000",
+		BadgeColor:  "#ff3b30",
+	},
+	{
+		ID:          "acid_lime",
+		Name:        "Acid Lime",
+		DisplayName: "酸性青柠 (Acid Lime)",
+		LeftColor:   "#c6ff00",
+		RightColor:  "#00e676",
+		WheelColor:  "#eeff41",
+		RingColor:   "#c6ff00",
+		BadgeColor:  "#ff1744",
+	},
+	{
+		ID:          "kyoto_lacquer",
+		Name:        "Kyoto Lacquer",
+		DisplayName: "京都漆器 (Kyoto Lacquer)",
+		LeftColor:   "#c08552",
+		RightColor:  "#e8c39e",
+		WheelColor:  "#d9a05b",
+		RingColor:   "#c08552",
+		BadgeColor:  "#b91c1c",
 	},
 }
 

@@ -12,26 +12,26 @@ func TestDefaultConfigCompleteness(t *testing.T) {
 	cfg := DefaultConfig()
 
 	// Verify exact Cue defaults
-	if cfg.General.Filter != "modifiers" {
-		t.Errorf("expected filter modifiers, got %s", cfg.General.Filter)
+	if cfg.General.Filter != "none" {
+		t.Errorf("expected filter none, got %s", cfg.General.Filter)
 	}
-	if cfg.General.ShowEventHistory != false {
-		t.Errorf("expected showEventHistory false, got %v", cfg.General.ShowEventHistory)
+	if cfg.General.ShowEventHistory != true {
+		t.Errorf("expected showEventHistory true, got %v", cfg.General.ShowEventHistory)
 	}
 	if cfg.General.MaxHistory != 5 {
 		t.Errorf("expected maxHistory 5, got %d", cfg.General.MaxHistory)
 	}
-	if cfg.General.LingerDurationMs != 5000 {
-		t.Errorf("expected lingerDurationMs 5000, got %d", cfg.General.LingerDurationMs)
+	if cfg.General.LingerDurationMs != 4500 {
+		t.Errorf("expected lingerDurationMs 4500, got %d", cfg.General.LingerDurationMs)
 	}
-	if cfg.Appearance.Alignment != AlignBottomCenter {
-		t.Errorf("expected alignment bottom-center, got %s", cfg.Appearance.Alignment)
+	if cfg.Appearance.Alignment != AlignBottomRight {
+		t.Errorf("expected alignment bottom-right, got %s", cfg.Appearance.Alignment)
 	}
 	if cfg.Appearance.MarginX != 100 || cfg.Appearance.MarginY != 100 {
 		t.Errorf("expected margins 100, got (%d, %d)", cfg.Appearance.MarginX, cfg.Appearance.MarginY)
 	}
-	if cfg.Appearance.Animation != "fade" {
-		t.Errorf("expected animation fade, got %s", cfg.Appearance.Animation)
+	if cfg.Appearance.Animation != "spring" {
+		t.Errorf("expected animation spring, got %s", cfg.Appearance.Animation)
 	}
 	if cfg.Version != configVersion {
 		t.Errorf("expected config version %d, got %d", configVersion, cfg.Version)
@@ -48,11 +48,26 @@ func TestDefaultConfigCompleteness(t *testing.T) {
 	if cfg.Border.Radius != 0 || cfg.Border.Color != "" {
 		t.Errorf("expected border to inherit, got %.1f/%s", cfg.Border.Radius, cfg.Border.Color)
 	}
-	if cfg.ThemePreset != "Liquid Glass" {
-		t.Errorf("expected Liquid Glass theme, got %s", cfg.ThemePreset)
+	if cfg.ThemePreset != "Swiss Typography 1957" {
+		t.Errorf("expected Swiss Typography theme, got %s", cfg.ThemePreset)
 	}
-	if cfg.Mouse.Size != 150 || cfg.Mouse.Color != "#00FF6A" {
-		t.Errorf("expected mouse size 150, color #00FF6A, got %d/%s", cfg.Mouse.Size, cfg.Mouse.Color)
+	if cfg.Mouse.Size != 40 || cfg.Mouse.Color != "" {
+		t.Errorf("expected mouse size 40 and theme-following color, got %d/%s", cfg.Mouse.Size, cfg.Mouse.Color)
+	}
+	if cfg.Mouse.DragThreshold != 50 {
+		t.Errorf("expected mouse drag threshold 50, got %d", cfg.Mouse.DragThreshold)
+	}
+	if cfg.General.DragThreshold != 0 {
+		t.Errorf("expected deprecated general drag threshold to stay empty, got %d", cfg.General.DragThreshold)
+	}
+	if cfg.Background.Enabled || cfg.Color.UseGradient {
+		t.Errorf("expected backdrop and gradient off by default, got %v/%v", cfg.Background.Enabled, cfg.Color.UseGradient)
+	}
+	if cfg.Text.Alignment != AlignCenter || cfg.Layout.IconAlignment != "center" {
+		t.Errorf("expected centered text and icon defaults, got %s/%s", cfg.Text.Alignment, cfg.Layout.IconAlignment)
+	}
+	if cfg.App.TrayClickAction != "settings" {
+		t.Errorf("expected tray click to open settings, got %q", cfg.App.TrayClickAction)
 	}
 	if !cfg.SemanticContext || !cfg.ShowAppBadge {
 		t.Errorf("expected context intelligence defaults on, got context=%v badge=%v", cfg.SemanticContext, cfg.ShowAppBadge)
@@ -402,6 +417,61 @@ func TestV5MouseOpacityPreserved(t *testing.T) {
 	}
 }
 
+// TestV6SettingsCleanup checks the schema cleanup: the drag threshold moves to
+// the mouse section, and fields that were previously inert get defaults that
+// preserve the v5 appearance instead of suddenly changing it.
+func TestV6SettingsCleanup(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "cue_cfg_v6_cleanup")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	filePath := filepath.Join(tmpDir, "v5.json")
+	raw := `{
+  "version": 5,
+  "general": {"dragThreshold": 80},
+  "appearance": {"monitor": "12345"},
+  "background": {"enabled": true, "color": "#ffffff99"},
+  "color": {"useGradient": true},
+  "layout": {"iconAlignment": "flex-end"},
+  "mouse": {"color": "#00FF6A", "indicatorSize": 70}
+}`
+	if err := os.WriteFile(filePath, []byte(raw), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	store, err := NewStore(filePath)
+	if err != nil {
+		t.Fatalf("failed to load v5 store: %v", err)
+	}
+	got := store.Get()
+	if got.Version != configVersion {
+		t.Errorf("expected version %d, got %d", configVersion, got.Version)
+	}
+	if got.Mouse.DragThreshold != 80 {
+		t.Errorf("drag threshold was not migrated: %d", got.Mouse.DragThreshold)
+	}
+	if got.General.DragThreshold != 0 {
+		t.Errorf("deprecated drag threshold should be cleared: %d", got.General.DragThreshold)
+	}
+	if got.Background.Enabled {
+		t.Error("the previously inert backdrop must stay off for existing installs")
+	}
+	if got.Color.UseGradient {
+		t.Error("the previously inert gradient must stay off for existing installs")
+	}
+	if got.Layout.IconAlignment != "center" || got.Text.Alignment != AlignCenter {
+		t.Errorf("alignment should reset to the v5 visual result, got %s/%s", got.Layout.IconAlignment, got.Text.Alignment)
+	}
+	if got.Mouse.Color != "" {
+		t.Errorf("old neon seed should clear to follow the theme, got %q", got.Mouse.Color)
+	}
+	if got.Mouse.IndicatorSize != 70 || got.Appearance.Monitor != "12345" {
+		t.Error("unrelated settings were lost during migration")
+	}
+}
+
 func TestEffectiveMouseOpacityClamps(t *testing.T) {
 	cases := []struct {
 		in   float64
@@ -473,5 +543,57 @@ func TestDefaultConfigIsFullyOpaqueAndAudible(t *testing.T) {
 	}
 	if cfg.Mouse.EffectiveOpacity() != 1.0 {
 		t.Errorf("default mouse opacity should be 1.0, got %v", cfg.Mouse.EffectiveOpacity())
+	}
+}
+
+// TestDecodeKeepsDefaultsForOmittedFields covers clipboard import: a small
+// snippet must not zero every setting it does not mention.
+func TestDecodeKeepsDefaultsForOmittedFields(t *testing.T) {
+	got, err := Decode([]byte(`{"themePreset":"Neon Night","general":{"showEventHistory":true}}`))
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	def := DefaultConfig()
+	if got.ThemePreset != "Neon Night" || !got.General.ShowEventHistory {
+		t.Errorf("provided fields were not applied: %+v", got)
+	}
+	if got.Mouse.Size != def.Mouse.Size || got.Mouse.DragThreshold != def.Mouse.DragThreshold {
+		t.Errorf("omitted mouse fields should keep defaults, got %+v", got.Mouse)
+	}
+	if got.Version != def.Version {
+		t.Errorf("expected current schema version %d, got %d", def.Version, got.Version)
+	}
+}
+
+func TestDecodeRejectsInvalidJSON(t *testing.T) {
+	if _, err := Decode([]byte(`{"themePreset":`)); err == nil {
+		t.Fatal("expected malformed JSON to be rejected")
+	}
+}
+
+// TestEncodeDecodeRoundTrip guards the export/import pair used by the settings
+// window.
+func TestEncodeDecodeRoundTrip(t *testing.T) {
+	orig := DefaultConfig()
+	orig.ThemePreset = "Dieter Rams 1960"
+	orig.App.ExcludedApps = []string{"code.exe"}
+	orig.CustomShortcuts = []CustomShortcut{{Chord: "Ctrl+K", Label: "Command Palette"}}
+
+	data, err := Encode(orig)
+	if err != nil {
+		t.Fatalf("Encode: %v", err)
+	}
+	got, err := Decode(data)
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	if got.ThemePreset != orig.ThemePreset {
+		t.Errorf("theme lost: %q", got.ThemePreset)
+	}
+	if len(got.App.ExcludedApps) != 1 || got.App.ExcludedApps[0] != "code.exe" {
+		t.Errorf("exclusions lost: %v", got.App.ExcludedApps)
+	}
+	if len(got.CustomShortcuts) != 1 || got.CustomShortcuts[0].Chord != "Ctrl+K" {
+		t.Errorf("shortcuts lost: %v", got.CustomShortcuts)
 	}
 }

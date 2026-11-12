@@ -1,6 +1,7 @@
 package theme
 
 import (
+	"regexp"
 	"testing"
 )
 
@@ -112,6 +113,34 @@ func TestThemeArchetypePhysics(t *testing.T) {
 	}
 }
 
+// TestExplicitModelOwnsItsPhysics pins the contract the model gallery previews:
+// an explicitly chosen model supplies its own travel and held response, while
+// Auto keeps the theme's hand-tuned signature.
+func TestExplicitModelOwnsItsPhysics(t *testing.T) {
+	glass := ThemeLiquidGlass // pulse theme with zero signature travel
+
+	if got := glass.EffectiveTravelDepthFor(""); got != 0 {
+		t.Errorf("Auto on Liquid Glass: got %f travel, want 0", got)
+	}
+	if got := glass.EffectiveTravelDepthFor("pbt"); got != 3.0 {
+		t.Errorf("PBT override: got %f travel, want 3.0", got)
+	}
+	if got := glass.EffectiveHeldPhysicsFor("pbt"); got != HeldSink {
+		t.Errorf("PBT override physics: got %v, want sink", got)
+	}
+	if got := glass.EffectiveHeldPhysicsFor("neon"); got != HeldPulse {
+		t.Errorf("Neon override physics: got %v, want pulse", got)
+	}
+
+	modelM := ThemeIBMModelM
+	if got := modelM.EffectiveTravelDepthFor("laptop"); got != 1.2 {
+		t.Errorf("Laptop override: got %f travel, want 1.2", got)
+	}
+	if got := modelM.EffectiveTravelDepthFor(""); got != 3.8 {
+		t.Errorf("Auto on Model M: got %f travel, want 3.8", got)
+	}
+}
+
 func TestThemeByNameLookup(t *testing.T) {
 	tests := []struct {
 		query    string
@@ -197,5 +226,47 @@ func TestColorToHex(t *testing.T) {
 	trans := rgba(255, 255, 255, 42)
 	if h := ColorToHex(trans); h != "#ffffff2a" {
 		t.Errorf("expected #ffffff2a, got %s", h)
+	}
+}
+
+// TestMouseThemesAreComplete guards the cursor presets as a catalogue: the
+// settings menu lists them in order, MouseThemeByID resolves every one of them,
+// and every colour must be a hex value the overlay can parse. A typo in a
+// colour used to show up as an invisible cursor rather than as an error.
+func TestMouseThemesAreComplete(t *testing.T) {
+	const wantAtLeast = 12
+	if len(AllMouseThemes) < wantAtLeast {
+		t.Fatalf("expected at least %d mouse themes, got %d", wantAtLeast, len(AllMouseThemes))
+	}
+
+	hex := regexp.MustCompile(`^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$`)
+	ids := make(map[string]bool, len(AllMouseThemes))
+	for _, m := range AllMouseThemes {
+		if m.ID == "" || m.Name == "" || m.DisplayName == "" {
+			t.Errorf("mouse theme %q is missing an identifier or a name", m.ID)
+		}
+		if ids[m.ID] {
+			t.Errorf("duplicate mouse theme id %q", m.ID)
+		}
+		ids[m.ID] = true
+
+		for label, color := range map[string]string{
+			"left":  m.LeftColor,
+			"right": m.RightColor,
+			"wheel": m.WheelColor,
+			"ring":  m.RingColor,
+			"badge": m.BadgeColor,
+		} {
+			if !hex.MatchString(color) {
+				t.Errorf("%s: %s colour %q is not hex", m.ID, label, color)
+			}
+		}
+		if got := MouseThemeByID(m.ID); got.ID != m.ID {
+			t.Errorf("MouseThemeByID(%q) returned %q", m.ID, got.ID)
+		}
+	}
+
+	if got := MouseThemeByID("no_such_theme"); got.ID != AllMouseThemes[0].ID {
+		t.Errorf("unknown id fell back to %q, want %q", got.ID, AllMouseThemes[0].ID)
 	}
 }

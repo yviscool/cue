@@ -31,7 +31,7 @@ jobs:
         run: go test -v -count=1 ./...
 
       - name: Build Windows Binary (cue.exe)
-        run: go build -ldflags="-H windowsgui -s -w" -o cue.exe .
+        run: go build -ldflags="-H windowsgui -s -w -X github.com/yviscool/cue/internal/version.Version=ci" -o cue.exe .
 
       - name: Upload Test Binary Artifact
         uses: actions/upload-artifact@v4
