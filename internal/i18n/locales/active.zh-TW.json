@@ -1157,6 +1157,8 @@
   "variant_text": "完整文本",
   "ui_row_privacy_shield": "隱私護盾",
   "ui_row_privacy_shield_desc": "在密碼、登入、銀行等視窗裡打字時，只顯示一個佔位符，不顯示真實按鍵",
+  "ui_row_injected_keys": "顯示模擬按鍵",
+  "ui_row_injected_keys_desc": "AutoHotkey、遠端桌面、改鍵工具發出的按鍵也算一次輸入；Total Commander 的 Vim 模式就靠它，關掉就看不到 j/k/h/l 了",
   "Activate Left Menu": "啟用左側選單",
   "Activate Menu": "啟用選單",
   "Branch View": "分支檢視",

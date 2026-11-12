@@ -68,3 +68,6 @@ func (h *stubHook) Stop() {
 func (h *stubHook) Events() <-chan InputEvent {
 	return h.events
 }
+
+// SetIncludeInjected is a no-op: non-Windows stubs never emit events at all.
+func (h *stubHook) SetIncludeInjected(bool) {}

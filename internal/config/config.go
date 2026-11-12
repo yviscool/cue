@@ -179,6 +179,7 @@ type GeneralSettings struct {
 	DragThreshold    int      `json:"dragThreshold,omitempty"` // deprecated: migrated to mouse.dragThreshold
 	WordGrouping     bool     `json:"wordGrouping"`            // continuous alphanumeric word grouping
 	PrivacyMode      bool     `json:"privacyMode"`             // mask keystrokes typed into password, login and banking windows
+	ShowInjectedKeys bool     `json:"showInjectedKeys"`        // also show keys synthesized by AutoHotkey / RDP / key remappers
 }
 
 // AppConfig is the complete, 100% faithful configuration model matching Cue specifications.
@@ -258,6 +259,7 @@ func DefaultConfig() AppConfig {
 			ToggleShortcut:   []string{"ShiftLeft", "F10"},
 			WordGrouping:     true,
 			PrivacyMode:      false,
+			ShowInjectedKeys: true,
 		},
 		Appearance: AppearanceSettings{
 			Monitor:               "",
@@ -454,7 +456,12 @@ func (s *Store) load() error {
 		return err
 	}
 
-	var loaded AppConfig
+	// Start from the defaults so a key the file does not mention keeps its
+	// documented default instead of the Go zero value. Without this, every
+	// option added after a user's config was written silently reads as false/0 —
+	// which is how "showInjectedKeys" would have arrived switched off for
+	// everybody who already had a config file.
+	loaded := DefaultConfig()
 	if err := json.Unmarshal(data, &loaded); err != nil {
 		return fmt.Errorf("parse config: %w", err)
 	}
@@ -682,11 +689,14 @@ func migrateLegacyConfig(c *AppConfig) bool {
 		// Version 6: fields that existed in the schema but were never rendered
 		// get the values that preserve the pre-v6 look. Drag threshold moves to
 		// the mouse section, where the gesture actually lives.
-		if c.Mouse.DragThreshold <= 0 {
+		// The deprecated key wins over the prefilled default: it is the value the
+		// user actually chose in v5, while mouse.dragThreshold is only there
+		// because the struct started from DefaultConfig.
+		if c.General.DragThreshold > 0 {
 			c.Mouse.DragThreshold = c.General.DragThreshold
-			if c.Mouse.DragThreshold <= 0 {
-				c.Mouse.DragThreshold = 50
-			}
+		}
+		if c.Mouse.DragThreshold <= 0 {
+			c.Mouse.DragThreshold = 50
 		}
 		c.General.DragThreshold = 0
 		c.Color.UseGradient = false

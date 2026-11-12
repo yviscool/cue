@@ -941,6 +941,13 @@ func (sc *SettingsController) renderAppTab(
 				}
 			})
 		}
+
+		row(i18n.T("ui_row_injected_keys"), i18n.T("ui_row_injected_keys_desc"), func() {
+			on := cfg.General.ShowInjectedKeys
+			if ui.Switch(c.Key("toggle-injected-keys"), &on).Changed() {
+				sc.updateConfig(func(ac *config.AppConfig) { ac.General.ShowInjectedKeys = on })
+			}
+		})
 	})
 
 	group(i18n.T("history_title"), func() {

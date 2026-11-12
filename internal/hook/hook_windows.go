@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 	"unsafe"
@@ -202,6 +203,10 @@ type windowsHook struct {
 	pressedKeys       map[uint32]bool
 	activeMods        Modifiers
 	lastMouseMoveTime time.Time
+
+	// includeInjected mirrors config.General.ShowInjectedKeys. It is read on the
+	// hook thread and written from the UI thread, hence the atomic.
+	includeInjected atomic.Bool
 }
 
 // New creates a new Windows input Hook with default buffer size.
@@ -522,16 +527,31 @@ func (h *windowsHook) handleKeyboard(wParam uintptr, lParam unsafe.Pointer) {
 		return
 	}
 	kbd := (*kbdllHookStruct)(lParam)
-	// Windows injected key filter: Ignore injected synthetic events
-	// (e.g. from Windows Start Menu / accessibility opening that caused Win+Esc to inject Ctrl+A)
-	if (kbd.flags & LLKHF_INJECTED) != 0 {
+	// Injected synthetic events are dropped unless the user asked for them.
+	// Windows itself sometimes synthesizes keys (the Start menu injecting Ctrl+A
+	// while Win+Esc is held), which is why they are off by default — but the same
+	// flag marks every AutoHotkey remap, so Total Commander's Vim layer, PowerToys
+	// key remaps and remote-desktop keystrokes are invisible while it is off.
+	injected := (kbd.flags & LLKHF_INJECTED) != 0
+	if injected && !h.includeInjected.Load() {
 		return
 	}
-	h.processKeyboard(wParam, kbd.vkCode, kbd.scanCode, (kbd.flags&LLKHF_ALTDOWN) != 0)
+	h.processKeyboardInjected(wParam, kbd.vkCode, kbd.scanCode, (kbd.flags&LLKHF_ALTDOWN) != 0, injected)
 }
 
-// processKeyboard performs event mapping, repeat checking, and non-blocking event emission.
+// SetIncludeInjected reports keys synthesized by other programs when enabled.
+func (h *windowsHook) SetIncludeInjected(enabled bool) {
+	h.includeInjected.Store(enabled)
+}
+
+// processKeyboard handles a physically pressed key; synthetic keys go through
+// processKeyboardInjected directly.
 func (h *windowsHook) processKeyboard(wParam uintptr, vk uint32, scan uint32, altFlag bool) {
+	h.processKeyboardInjected(wParam, vk, scan, altFlag, false)
+}
+
+// processKeyboardInjected performs event mapping, repeat checking, and non-blocking event emission.
+func (h *windowsHook) processKeyboardInjected(wParam uintptr, vk uint32, scan uint32, altFlag bool, injected bool) {
 	var isDown bool
 	var evType EventType
 
@@ -571,6 +591,7 @@ func (h *windowsHook) processKeyboard(wParam uintptr, vk uint32, scan uint32, al
 		Modifiers:   mods,
 		IsModifier:  isMod,
 		IsKeyRepeat: isRepeat,
+		IsInjected:  injected,
 	}
 
 	// Priority dispatch for keyboard events: never drop keystrokes due to mouse event flooding.

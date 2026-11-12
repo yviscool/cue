@@ -1157,6 +1157,8 @@
   "variant_text": "Full Text",
   "ui_row_privacy_shield": "Privacy Shield",
   "ui_row_privacy_shield_desc": "Typing in password, login, and banking windows shows a placeholder instead of the real keys",
+  "ui_row_injected_keys": "Simulated keys",
+  "ui_row_injected_keys_desc": "Count keys synthesized by AutoHotkey, remote desktop, and key remappers. Total Commander's Vim mode is built on them; turn this off and j/k/h/l stop showing up",
   "Activate Left Menu": "Activate Left Menu",
   "Activate Menu": "Activate Menu",
   "Branch View": "Branch View",

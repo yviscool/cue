@@ -495,6 +495,7 @@ func (a *app) ready() {
 
 	// 4. Start OS Low-Level Hook with Global Toggle Shortcut support
 	a.hk = hook.NewHook()
+	a.hk.SetIncludeInjected(a.store.Get().General.ShowInjectedKeys)
 	go func() {
 		for ev := range a.hk.Events() {
 			if isToggleShortcutMatch(ev, a.store.Get().General.ToggleShortcut) {
@@ -603,6 +604,9 @@ func (a *app) applyConfig(cfg config.AppConfig) {
 	a.eng.SetSoundActive(cfg.TactileAudio)
 	a.eng.SetWordGrouping(cfg.General.WordGrouping)
 	a.eng.SetPrivacyMode(cfg.General.PrivacyMode)
+	if a.hk != nil {
+		a.hk.SetIncludeInjected(cfg.General.ShowInjectedKeys)
+	}
 	a.eng.SetSemanticContext(cfg.SemanticContext)
 	a.eng.SetLingerDuration(cfg.General.LingerDurationMs)
 	a.eng.SetMaxChords(historyChordLimit(cfg))

@@ -114,6 +114,13 @@ type InputEvent struct {
 	IsModifier  bool      // True if the key itself is Ctrl/Shift/Alt/Win
 	IsKeyRepeat bool      // True if auto-repeat from keeping key pressed
 
+	// IsInjected marks keys synthesized by another program (LLKHF_INJECTED on
+	// Windows): AutoHotkey remaps, remote desktop sessions, keyboard-manager
+	// utilities. The target window still receives them, so cue treats them as
+	// real input when IncludeInjected is on — Total Commander's Vim mode is
+	// nothing but an AutoHotkey script turning "j" into "{Down}".
+	IsInjected bool
+
 	// Mouse fields
 	Button     MouseButton
 	X          int // Absolute screen X
@@ -126,4 +133,9 @@ type Hook interface {
 	Start() error
 	Stop()
 	Events() <-chan InputEvent
+
+	// SetIncludeInjected controls whether keys synthesized by other programs are
+	// reported. It is off by default so a stray script cannot flood the overlay;
+	// the engine turns it on from config.General.ShowInjectedKeys.
+	SetIncludeInjected(enabled bool)
 }

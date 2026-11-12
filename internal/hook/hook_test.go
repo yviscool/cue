@@ -646,6 +646,48 @@ func TestHook_InjectedFilter(t *testing.T) {
 	}
 }
 
+// TestHook_IncludeInjected verifies the opt-in path: once enabled, keys sent by
+// another program are reported and flagged, because AutoHotkey remaps (Total
+// Commander's Vim mode, PowerToys, remote desktop) never produce physical
+// keystrokes and would otherwise be invisible to the overlay.
+func TestHook_IncludeInjected(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("skipping Windows-specific simulation on non-Windows")
+	}
+
+	wh := NewHook(16).(*windowsHook)
+	wh.SetIncludeInjected(true)
+
+	injectedKbd := kbdllHookStruct{
+		vkCode:   VK_DOWN,
+		scanCode: 0x50,
+		flags:    LLKHF_INJECTED,
+	}
+	wh.handleKeyboard(WM_KEYDOWN, unsafe.Pointer(&injectedKbd))
+
+	select {
+	case ev := <-wh.Events():
+		if ev.VKCode != VK_DOWN {
+			t.Fatalf("expected VK_DOWN, got 0x%02X", ev.VKCode)
+		}
+		if !ev.IsInjected {
+			t.Error("event should carry IsInjected=true")
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("timed out waiting for injected event while includeInjected is on")
+	}
+
+	// Turning it back off must restore the drop.
+	wh.SetIncludeInjected(false)
+	wh.handleKeyboard(WM_KEYDOWN, unsafe.Pointer(&injectedKbd))
+
+	select {
+	case ev := <-wh.Events():
+		t.Fatalf("injected key leaked after disabling: %+v", ev)
+	case <-time.After(50 * time.Millisecond):
+	}
+}
+
 // TestHook_CallbacksRegister verifies both hook thunks can actually be built.
 // The hook procedure carries lParam as an unsafe.Pointer so the KBDLLHOOKSTRUCT
 // pointer reaches the handler without a uintptr round trip, and

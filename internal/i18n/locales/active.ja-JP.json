@@ -1157,6 +1157,8 @@
   "variant_text": "フルテキスト",
   "ui_row_privacy_shield": "プライバシーシールド",
   "ui_row_privacy_shield_desc": "パスワード・ログイン・銀行のウィンドウでは、実際のキーの代わりにプレースホルダーを表示します",
+  "ui_row_injected_keys": "擬似キーを表示",
+  "ui_row_injected_keys_desc": "AutoHotkey・リモートデスクトップ・キー変更ツールが送るキーも入力として扱います。Total Commander の Vim モードはこれで動いているため、オフにすると j/k/h/l が表示されません",
   "Activate Left Menu": "左メニューを有効化",
   "Activate Menu": "メニューを有効化",
   "Branch View": "ブランチ表示",

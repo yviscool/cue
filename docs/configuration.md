@@ -39,7 +39,8 @@ remains useful for bulk edits and for sharing configurations.
     "lingerDurationMs": 4500,
     "toggleShortcut": ["ShiftLeft", "F10"],
     "wordGrouping": true,
-    "privacyMode": false
+    "privacyMode": false,
+    "showInjectedKeys": true
   },
   "appearance": {
     "monitor": "",
@@ -142,9 +143,14 @@ logged and skipped; they never disable the rest of the dictionary.
 | `general.toggleShortcut` | `string[]` | `["ShiftLeft", "F10"]` | Global hotkey that shows or hides the overlay. Record it in Settings instead of editing tokens by hand. |
 | `general.wordGrouping` | `bool` | `true` | Merge consecutive alphanumeric keystrokes into words. |
 | `general.privacyMode` | `bool` | `false` | Mask keystrokes typed into password, login, and banking windows. Off by default. |
+| `general.showInjectedKeys` | `bool` | `true` | Also show keys synthesized by another program (AutoHotkey, remote desktop, key remappers). Needed for Total Commander's Vim mode, which is an AutoHotkey layer sending `{Down}` instead of `j`. Turn it off if a script floods the overlay. |
 
 The deprecated `general.dragThreshold` is read only by the v6 migration; new
 configurations store the value under `mouse.dragThreshold`.
+
+`general.showInjectedKeys` only helps when the helper actually sends keystrokes.
+Layers built on window messages — Total Commander's `cm_*` commands, for example
+— never produce a key event at all, so no keyboard hook can observe them.
 
 ### Timing windows
 

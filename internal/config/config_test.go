@@ -207,6 +207,41 @@ func TestStorePersistence(t *testing.T) {
 	}
 }
 
+// TestStoreFillsMissingKeysWithDefaults pins the load contract: a config file
+// written before an option existed must fall back to that option's documented
+// default, not to the Go zero value. Without it every newly added bool arrives
+// switched off for existing installs — which is exactly how "showInjectedKeys"
+// would have failed to enable Total Commander's Vim layer.
+func TestStoreFillsMissingKeysWithDefaults(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "cue_cfg_defaults")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	filePath := filepath.Join(tmpDir, "old.json")
+	raw := `{"version": 7, "general": {"maxHistory": 4}}`
+	if err := os.WriteFile(filePath, []byte(raw), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	store, err := NewStore(filePath)
+	if err != nil {
+		t.Fatalf("failed to load store: %v", err)
+	}
+	got := store.Get()
+	def := DefaultConfig()
+	if !got.General.ShowInjectedKeys {
+		t.Error("showInjectedKeys must default to true for configs that predate it")
+	}
+	if got.General.MaxHistory != 4 {
+		t.Errorf("explicit value was overwritten: maxHistory = %d", got.General.MaxHistory)
+	}
+	if got.Mouse.Size != def.Mouse.Size || got.General.LingerDurationMs != def.General.LingerDurationMs {
+		t.Errorf("missing sections should keep defaults, got %+v", got)
+	}
+}
+
 func TestStoreHotReload(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "cue_cfg_reload")
 	if err != nil {
