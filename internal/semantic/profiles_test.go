@@ -250,6 +250,22 @@ var profileTables = []profileTable{
 		},
 	},
 	{
+		profile: "totalcommander", exe: "totalcmd64.exe", title: "C://// - Total Commander",
+		cases: []chordCase{
+			// The bare function keys are the reason this profile exists: in the
+			// universal table F5 has no meaning at all, and the ones that do exist
+			// (F5 = refresh) describe the wrong application.
+			{hook.ModNone, "F5", "Copy Files"},
+			{hook.ModNone, "F6", "Rename / Move Files"},
+			{hook.ModNone, "F7", "New Folder"},
+			{hook.ModNone, "F8", "Delete Files"},
+			{hook.ModNone, "TAB", "Switch Panel"},
+			{hook.ModCtrl, "U", "Swap Panels"},
+			{hook.ModCtrl, "\\", "Jump to Root"},
+			{hook.ModCtrl, "F5", "Sort by Date"},
+		},
+	},
+	{
 		profile: "explorer", exe: "explorer.exe", title: "Downloads",
 		cases: []chordCase{
 			{hook.ModCtrl | hook.ModShift, "C", "Copy Path"},

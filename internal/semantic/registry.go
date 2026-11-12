@@ -143,6 +143,7 @@ func (r *Registry) initProfiles() {
 	r.initChat()
 	r.initNotes()
 	r.initExplorer()
+	r.initTotalCommander()
 }
 
 // Resolve picks the most specific profile for an app context.

@@ -12,11 +12,11 @@ describe shortcuts the app does not know about.
 | :--- | ---: |
 | Universal | 102 |
 | Category dictionaries | 120 |
-| Application profiles | 815 |
+| Application profiles | 892 |
 | Two-chord sequences | 24 |
-| **Total** | **1061** |
-| Distinct action titles | 707 |
-| Profiles | 29 |
+| **Total** | **1138** |
+| Distinct action titles | 768 |
+| Profiles | 30 |
 
 Priority when resolving a keystroke:
 `user override > exact app profile > app category > universal > no label`.
@@ -1298,4 +1298,88 @@ Fallback for applications in the terminal family that have no exact profile.
 | `Ctrl + Shift + 4 ($)` | Small Icons |
 | `Ctrl + Z` | Undo |
 | `Alt + UP` | Up One Level |
+
+## Profile · Total Commander
+
+77 mappings · verified against Total Commander 11 · source: Total Commander Keyboard.txt (installation directory)
+
+| Shortcut | Action |
+| :--- | :--- |
+| `F10` | Activate Left Menu |
+| `F9` | Activate Menu |
+| `Alt + LEFT` | Back |
+| `Ctrl + B` | Branch View |
+| `Ctrl + Shift + B` | Branch View (Selected) |
+| `Ctrl + F1` | Brief View |
+| `Ctrl + L` | Calculate Size |
+| `Alt + F1` | Change Left Drive |
+| `Alt + F2` | Change Right Drive |
+| `Ctrl + Shift + W` | Close All Tabs |
+| `Ctrl + W` | Close Tab |
+| `Ctrl + Shift + F2` | Comments View |
+| `Ctrl + F` | Connect to FTP |
+| `Shift + F10` | Context Menu |
+| `F5` | Copy Files |
+| `Ctrl + P` | Copy Path to Command Line |
+| `Shift + F5` | Copy in Place |
+| `Ctrl + C` | Copy to Clipboard |
+| `Ctrl + X` | Cut to Clipboard |
+| `DELETE` | Delete Files |
+| `F8` | Delete Files |
+| `NUM-` | Deselect by Mask |
+| `Alt + DOWN` | Directory History |
+| `Ctrl + D` | Directory Hotlist |
+| `Ctrl + F8` | Directory Tree |
+| `Ctrl + Shift + F` | Disconnect from FTP |
+| `Ctrl + Z` | Edit Comment |
+| `F4` | Edit File |
+| `Alt + F7` | Find Files |
+| `Alt + RIGHT` | Forward |
+| `Ctrl + F2` | Full View |
+| `F1` | Help |
+| `NUM*` | Invert Selection |
+| `Ctrl + \` | Jump to Root |
+| `Ctrl + M` | Multi-Rename Tool |
+| `F7` | New Folder |
+| `Shift + F7` | New Folder in Other Panel |
+| `Ctrl + T` | New Tab |
+| `Ctrl + Shift + T` | New Tab in Background |
+| `Shift + F4` | New Text File |
+| `Ctrl + TAB` | Next Tab |
+| `Ctrl + PAGEDOWN` | Open Directory / Archive |
+| `Ctrl + LEFT` | Open in Target Panel |
+| `Ctrl + RIGHT` | Open in Target Panel |
+| `Alt + F5` | Pack Files |
+| `Ctrl + V` | Paste to Current Directory |
+| `Ctrl + Shift + TAB` | Previous Tab |
+| `Alt + ENTER` | Properties |
+| `Ctrl + S` | Quick Filter |
+| `Ctrl + Shift + S` | Quick Filter (Last Used) |
+| `Ctrl + Q` | Quick View |
+| `F6` | Rename / Move Files |
+| `Shift + F6` | Rename in Place |
+| `F2` | Reread Source |
+| `SPACE` | Select / Count Size |
+| `Ctrl + A` | Select All |
+| `INSERT` | Select File |
+| `NUM+` | Select by Mask |
+| `Ctrl + F10` | Show All Files |
+| `Ctrl + F11` | Show Only Programs |
+| `Ctrl + F5` | Sort by Date |
+| `Ctrl + F4` | Sort by Extension |
+| `Ctrl + F3` | Sort by Name |
+| `Ctrl + F6` | Sort by Size |
+| `Ctrl + U` | Swap Panels |
+| `Ctrl + Shift + U` | Swap Panels and Tabs |
+| `TAB` | Switch Panel |
+| `Ctrl + I` | Switch to Target Directory |
+| `Shift + TAB` | Switch to Tree |
+| `Ctrl + Shift + F1` | Thumbnails View |
+| `Alt + F6` | Unpack Files |
+| `Alt + F9` | Unpack Files |
+| `Ctrl + F7` | Unsorted |
+| `BACKSPACE` | Up One Level |
+| `Ctrl + PAGEUP` | Up One Level |
+| `Ctrl + F12` | User-Defined Files |
+| `F3` | View File |
 
